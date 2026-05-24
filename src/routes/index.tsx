@@ -1,15 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Send, Sparkles, Check, Flame } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
-import { generateRafiqReply, type Persona, type RafiqReply } from "@/lib/rafiq.functions";
+import { Onboarding } from "@/components/Onboarding";
+import {
+  generateRafiqReply,
+  confirmActionDone,
+  getStreakStats,
+  type Persona,
+  type RafiqReply,
+} from "@/lib/rafiq.functions";
 
 export const Route = createFileRoute("/")({ component: Rafiq });
 
 interface ChatMsg {
   id: string;
+  interactionId?: string;
   role: "user" | "rafiq";
   text: string;
   validate?: string;
@@ -30,26 +38,50 @@ const PERSONAS: { id: Persona; label: string; sub: string }[] = [
   { id: "friend", label: "الصاحب", sub: "دفء وبساطة" },
 ];
 
-const STREAK_KEY = "rafiq.streak";
+const SESSION_KEY = "rafiq.session.id";
 const PERSONA_KEY = "rafiq.persona";
+const ONBOARDED_KEY = "rafiq.onboarded";
+
+function getSessionId(): string {
+  if (typeof window === "undefined") return "ssr";
+  let id = localStorage.getItem(SESSION_KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, id);
+  }
+  return id;
+}
 
 function Rafiq() {
   const callRafiq = useServerFn(generateRafiqReply);
+  const confirmAction = useServerFn(confirmActionDone);
+  const fetchStreak = useServerFn(getStreakStats);
+
+  const [sessionId, setSessionId] = useState<string>("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [persona, setPersona] = useState<Persona>("friend");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streak, setStreak] = useState(0);
+  const [streak, setStreak] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setSessionId(getSessionId());
+    const onboarded = localStorage.getItem(ONBOARDED_KEY);
+    if (!onboarded) setShowOnboarding(true);
     const p = localStorage.getItem(PERSONA_KEY) as Persona | null;
     if (p) setPersona(p);
-    const s = parseInt(localStorage.getItem(STREAK_KEY) || "0", 10);
-    if (!isNaN(s)) setStreak(s);
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    fetchStreak({ data: { sessionId } })
+      .then(setStreak)
+      .catch(() => {});
+  }, [sessionId, fetchStreak]);
 
   useEffect(() => {
     if (typeof window !== "undefined") localStorage.setItem(PERSONA_KEY, persona);
@@ -59,19 +91,14 @@ function Rafiq() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, thinking]);
 
-  const history = useMemo(
-    () =>
-      messages.map<{ role: "user" | "assistant"; content: string }>((m) =>
-        m.role === "user"
-          ? { role: "user", content: m.text }
-          : { role: "assistant", content: `${m.validate ?? ""} ${m.reframe ?? ""} → ${m.action ?? ""}`.trim() },
-      ),
-    [messages],
-  );
+  function finishOnboarding() {
+    localStorage.setItem(ONBOARDED_KEY, "1");
+    setShowOnboarding(false);
+  }
 
   async function send(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || thinking) return;
+    if (!trimmed || thinking || !sessionId) return;
     setError(null);
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: trimmed };
     setMessages((m) => [...m, userMsg]);
@@ -81,7 +108,7 @@ function Rafiq() {
     const start = Date.now();
     let response: RafiqReply;
     try {
-      response = await callRafiq({ data: { userText: trimmed, persona, history } });
+      response = await callRafiq({ data: { sessionId, userText: trimmed, persona } });
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "حصل خطأ غير متوقع";
       setError(msg);
@@ -95,6 +122,7 @@ function Rafiq() {
       ...m,
       {
         id: crypto.randomUUID(),
+        interactionId: response.id,
         role: "rafiq",
         text: response.validate,
         validate: response.validate,
@@ -103,22 +131,36 @@ function Rafiq() {
       },
     ]);
     setThinking(false);
+    setStreak((s) => ({ ...s, total: s.total + 1 }));
   }
 
-  function markActionDone(id: string) {
-    setMessages((prev) => prev.map((x) => (x.id === id && !x.actionDone ? { ...x, actionDone: true } : x)));
-    const next = streak + 1;
-    setStreak(next);
-    if (typeof window !== "undefined") localStorage.setItem(STREAK_KEY, String(next));
+  async function markActionDone(msgId: string, interactionId?: string) {
+    setMessages((prev) =>
+      prev.map((x) => (x.id === msgId && !x.actionDone ? { ...x, actionDone: true } : x)),
+    );
+    setStreak((s) => ({ ...s, done: s.done + 1 }));
+    if (interactionId) {
+      try {
+        await confirmAction({ data: { interactionId, sessionId } });
+      } catch {
+        /* non-blocking */
+      }
+    }
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
-      {/* Header */}
+      {showOnboarding && <Onboarding onDone={finishOnboarding} />}
+
       <header className="relative pt-5 pb-2 px-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-1.5 text-xs font-arabic text-ivory/40">
+        <div
+          className="flex items-center gap-1.5 text-xs font-arabic text-ivory/50 px-2 py-1 rounded-full bg-ivory/[0.03] border border-ivory/8"
+          title="عدد الحركات اللي نفّذتها"
+        >
           <Flame className="w-3.5 h-3.5" style={{ color: "#E6C38E" }} />
-          <span>{streak}</span>
+          <span>{streak.done}</span>
+          <span className="text-ivory/25">/</span>
+          <span className="text-ivory/40">{streak.total}</span>
         </div>
         <img
           src={logoUrl}
@@ -126,10 +168,9 @@ function Rafiq() {
           className="h-12 w-auto opacity-30"
           style={{ filter: "brightness(1.4) sepia(0.05)" }}
         />
-        <div className="w-10" />
+        <div className="w-12" />
       </header>
 
-      {/* Persona switcher */}
       <div className="px-4 pt-1">
         <div className="max-w-xl mx-auto flex items-center justify-center gap-1.5 p-1 rounded-full border border-ivory/8 bg-ivory/[0.02]">
           {PERSONAS.map((p) => {
@@ -142,9 +183,7 @@ function Rafiq() {
                   active ? "text-[#121212]" : "text-ivory/55 hover:text-ivory/85"
                 }`}
                 style={
-                  active
-                    ? { background: "linear-gradient(135deg, #E6C38E, #d4ad6e)" }
-                    : undefined
+                  active ? { background: "linear-gradient(135deg, #E6C38E, #d4ad6e)" } : undefined
                 }
               >
                 {p.label}
@@ -154,7 +193,6 @@ function Rafiq() {
         </div>
       </div>
 
-      {/* Orb */}
       <div className="pt-3 pb-3">
         <BreathingOrb thinking={thinking} />
         <p className="text-center text-[11px] text-ivory/35 mt-3 font-arabic tracking-wide">
@@ -162,7 +200,6 @@ function Rafiq() {
         </p>
       </div>
 
-      {/* Chat */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="max-w-xl mx-auto space-y-4">
           {messages.length === 0 && !thinking && (
@@ -171,7 +208,11 @@ function Rafiq() {
             </p>
           )}
           {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} onAction={markActionDone} />
+            <MessageBubble
+              key={m.id}
+              msg={m}
+              onAction={() => markActionDone(m.id, m.interactionId)}
+            />
           ))}
           {thinking && <TypingIndicator />}
           {error && (
@@ -182,7 +223,6 @@ function Rafiq() {
         </div>
       </div>
 
-      {/* Pills + Input */}
       <div className="px-4 pb-6 pt-2 bg-gradient-to-t from-[#121212] via-[#121212] to-transparent">
         <div className="max-w-xl mx-auto space-y-3">
           <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
@@ -228,7 +268,7 @@ function Rafiq() {
   );
 }
 
-function MessageBubble({ msg, onAction }: { msg: ChatMsg; onAction: (id: string) => void }) {
+function MessageBubble({ msg, onAction }: { msg: ChatMsg; onAction: () => void }) {
   if (msg.role === "user") {
     return (
       <div className="flex justify-end animate-fade-up">
@@ -250,17 +290,14 @@ function MessageBubble({ msg, onAction }: { msg: ChatMsg; onAction: (id: string)
       >
         {msg.validate && <p>{msg.validate}</p>}
         {msg.reframe && (
-          <p
-            className="text-[14px] pt-1.5 border-t border-ivory/8"
-            style={{ color: "#cfd6c1" }}
-          >
+          <p className="text-[14px] pt-1.5 border-t border-ivory/8" style={{ color: "#cfd6c1" }}>
             {msg.reframe}
           </p>
         )}
       </div>
       {msg.action && (
         <button
-          onClick={() => onAction(msg.id)}
+          onClick={onAction}
           disabled={msg.actionDone}
           className="ml-1 group inline-flex items-center gap-2 px-4 py-2.5 rounded-full font-arabic text-sm transition-all"
           style={{
