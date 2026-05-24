@@ -6,8 +6,17 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
 function createSupabaseAdminClient() {
-  const SUPABASE_URL = process.env.SUPABASE_URL;
-  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  let SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!SUPABASE_SERVICE_ROLE_KEY) {
+    SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    if (SUPABASE_SERVICE_ROLE_KEY) {
+      console.warn(
+        `[Supabase Warning] SUPABASE_SERVICE_ROLE_KEY is missing. Falling back to publishable/anon key. Database operations requiring admin bypass may fail. Please add SUPABASE_SERVICE_ROLE_KEY to your .env file or connect Supabase in Lovable Cloud.`
+      );
+    }
+  }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     const missing = [

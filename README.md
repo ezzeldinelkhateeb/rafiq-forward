@@ -1,5 +1,5 @@
 Rafiq — رفيق
-
+npm run dev
 “Minimum Words, Maximum Motion.”
 
 Rafiq is an AI Behavioral Companion designed to help people escape digital addiction, reduce doomscrolling, regain focus, and move toward becoming a better version of themselves through emotionally intelligent micro-actions and long-term behavioral continuity.
