@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Send, Settings, Sparkles, X, Check } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { Send, Sparkles, Check, Flame } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
-import { callRafiq, type RafiqResponse } from "@/lib/rafiq-api";
+import { generateRafiqReply, type Persona, type RafiqReply } from "@/lib/rafiq.functions";
 
 export const Route = createFileRoute("/")({ component: Rafiq });
 
@@ -11,6 +12,8 @@ interface ChatMsg {
   id: string;
   role: "user" | "rafiq";
   text: string;
+  validate?: string;
+  reframe?: string;
   action?: string;
   actionDone?: boolean;
 }
@@ -21,23 +24,36 @@ const PILLS = [
   { emoji: "🧠", text: "دماغي زحمة ومشوش" },
 ];
 
-const STORAGE_KEY = "rafiq.gemini.key";
+const PERSONAS: { id: Persona; label: string; sub: string }[] = [
+  { id: "sage", label: "الحكيم", sub: "هدوء وعمق" },
+  { id: "coach", label: "المدرّب", sub: "حسم وحركة" },
+  { id: "friend", label: "الصاحب", sub: "دفء وبساطة" },
+];
+
+const STREAK_KEY = "rafiq.streak";
+const PERSONA_KEY = "rafiq.persona";
 
 function Rafiq() {
-  const [apiKey, setApiKey] = useState("");
-  const [keyDraft, setKeyDraft] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
+  const callRafiq = useServerFn(generateRafiqReply);
+  const [persona, setPersona] = useState<Persona>("friend");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streak, setStreak] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const k = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    if (k) setApiKey(k);
-    else setShowSettings(true);
+    if (typeof window === "undefined") return;
+    const p = localStorage.getItem(PERSONA_KEY) as Persona | null;
+    if (p) setPersona(p);
+    const s = parseInt(localStorage.getItem(STREAK_KEY) || "0", 10);
+    if (!isNaN(s)) setStreak(s);
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") localStorage.setItem(PERSONA_KEY, persona);
+  }, [persona]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -45,10 +61,10 @@ function Rafiq() {
 
   const history = useMemo(
     () =>
-      messages.flatMap<{ role: "user" | "model"; text: string }>((m) =>
+      messages.map<{ role: "user" | "assistant"; content: string }>((m) =>
         m.role === "user"
-          ? [{ role: "user", text: m.text }]
-          : [{ role: "model", text: m.text }],
+          ? { role: "user", content: m.text }
+          : { role: "assistant", content: `${m.validate ?? ""} ${m.reframe ?? ""} → ${m.action ?? ""}`.trim() },
       ),
     [messages],
   );
@@ -56,10 +72,6 @@ function Rafiq() {
   async function send(text: string) {
     const trimmed = text.trim();
     if (!trimmed || thinking) return;
-    if (!apiKey) {
-      setShowSettings(true);
-      return;
-    }
     setError(null);
     const userMsg: ChatMsg = { id: crypto.randomUUID(), role: "user", text: trimmed };
     setMessages((m) => [...m, userMsg]);
@@ -67,11 +79,11 @@ function Rafiq() {
     setThinking(true);
 
     const start = Date.now();
-    let response: RafiqResponse;
+    let response: RafiqReply;
     try {
-      response = await callRafiq(apiKey, trimmed, history);
+      response = await callRafiq({ data: { userText: trimmed, persona, history } });
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "خطأ غير متوقع";
+      const msg = e instanceof Error ? e.message : "حصل خطأ غير متوقع";
       setError(msg);
       setThinking(false);
       return;
@@ -81,51 +93,76 @@ function Rafiq() {
 
     setMessages((m) => [
       ...m,
-      { id: crypto.randomUUID(), role: "rafiq", text: response.reply, action: response.action },
+      {
+        id: crypto.randomUUID(),
+        role: "rafiq",
+        text: response.validate,
+        validate: response.validate,
+        reframe: response.reframe,
+        action: response.action,
+      },
     ]);
     setThinking(false);
   }
 
-  function saveKey() {
-    const k = keyDraft.trim();
-    if (!k) return;
-    localStorage.setItem(STORAGE_KEY, k);
-    setApiKey(k);
-    setKeyDraft("");
-    setShowSettings(false);
+  function markActionDone(id: string) {
+    setMessages((prev) => prev.map((x) => (x.id === id && !x.actionDone ? { ...x, actionDone: true } : x)));
+    const next = streak + 1;
+    setStreak(next);
+    if (typeof window !== "undefined") localStorage.setItem(STREAK_KEY, String(next));
   }
 
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
       {/* Header */}
-      <header className="relative pt-6 pb-2 px-4 flex items-center justify-center">
-        <button
-          aria-label="الإعدادات"
-          onClick={() => {
-            setKeyDraft(apiKey);
-            setShowSettings(true);
-          }}
-          className="absolute top-5 left-4 p-2 rounded-full text-ivory/30 hover:text-ivory/70 transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
+      <header className="relative pt-5 pb-2 px-4 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-1.5 text-xs font-arabic text-ivory/40">
+          <Flame className="w-3.5 h-3.5" style={{ color: "#E6C38E" }} />
+          <span>{streak}</span>
+        </div>
         <img
           src={logoUrl}
           alt="رفيق"
-          className="h-14 w-auto opacity-30"
+          className="h-12 w-auto opacity-30"
           style={{ filter: "brightness(1.4) sepia(0.05)" }}
         />
+        <div className="w-10" />
       </header>
 
+      {/* Persona switcher */}
+      <div className="px-4 pt-1">
+        <div className="max-w-xl mx-auto flex items-center justify-center gap-1.5 p-1 rounded-full border border-ivory/8 bg-ivory/[0.02]">
+          {PERSONAS.map((p) => {
+            const active = persona === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setPersona(p.id)}
+                className={`flex-1 px-3 py-1.5 rounded-full font-arabic text-[13px] transition-all ${
+                  active ? "text-[#121212]" : "text-ivory/55 hover:text-ivory/85"
+                }`}
+                style={
+                  active
+                    ? { background: "linear-gradient(135deg, #E6C38E, #d4ad6e)" }
+                    : undefined
+                }
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Orb */}
-      <div className="pt-2 pb-4">
+      <div className="pt-3 pb-3">
         <BreathingOrb thinking={thinking} />
-        <p className="text-center text-xs text-ivory/40 mt-3 font-arabic tracking-wide">
-          يأخذ بيدك… لتكون أفضل نسخة من نفسك
+        <p className="text-center text-[11px] text-ivory/35 mt-3 font-arabic tracking-wide">
+          {PERSONAS.find((x) => x.id === persona)?.sub} · يأخذ بيدك
         </p>
       </div>
 
-      {/* Chat scroll area */}
+      {/* Chat */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-4">
         <div className="max-w-xl mx-auto space-y-4">
           {messages.length === 0 && !thinking && (
@@ -134,9 +171,7 @@ function Rafiq() {
             </p>
           )}
           {messages.map((m) => (
-            <MessageBubble key={m.id} msg={m} onAction={(id) =>
-              setMessages((prev) => prev.map((x) => (x.id === id ? { ...x, actionDone: true } : x)))
-            } />
+            <MessageBubble key={m.id} msg={m} onAction={markActionDone} />
           ))}
           {thinking && <TypingIndicator />}
           {error && (
@@ -189,52 +224,6 @@ function Rafiq() {
           </form>
         </div>
       </div>
-
-      {/* Settings modal */}
-      {showSettings && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 animate-fade-up">
-          <div className="w-full max-w-sm bg-[#1a1a1a] border border-ivory/10 rounded-2xl p-6 relative">
-            <button
-              onClick={() => setShowSettings(false)}
-              className="absolute top-3 left-3 text-ivory/40 hover:text-ivory/80"
-              aria-label="إغلاق"
-            >
-              <X className="w-4 h-4" />
-            </button>
-            <div className="flex items-center gap-2 mb-1">
-              <Sparkles className="w-4 h-4" style={{ color: "#E6C38E" }} />
-              <h2 className="font-arabic text-ivory text-lg">مفتاح Gemini</h2>
-            </div>
-            <p className="text-ivory/50 text-xs font-arabic mb-4 leading-relaxed">
-              ضع مفتاح Google Gemini المجاني. يُحفظ على جهازك فقط.
-            </p>
-            <input
-              type="password"
-              value={keyDraft}
-              onChange={(e) => setKeyDraft(e.target.value)}
-              placeholder="AIza..."
-              dir="ltr"
-              className="w-full bg-ivory/[0.04] border border-ivory/10 rounded-lg px-3 py-2.5 text-ivory text-sm outline-none focus:border-gold/40 font-sans"
-            />
-            <button
-              onClick={saveKey}
-              disabled={!keyDraft.trim()}
-              className="w-full mt-3 py-2.5 rounded-lg bg-gold/20 text-gold hover:bg-gold/30 disabled:opacity-30 transition-colors font-arabic text-sm"
-              style={{ color: "#E6C38E" }}
-            >
-              حفظ
-            </button>
-            <a
-              href="https://aistudio.google.com/apikey"
-              target="_blank"
-              rel="noreferrer"
-              className="block text-center text-xs text-ivory/40 hover:text-ivory/70 mt-3 font-sans"
-            >
-              احصل على مفتاح مجاني ↗
-            </a>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -252,14 +241,22 @@ function MessageBubble({ msg, onAction }: { msg: ChatMsg; onAction: (id: string)
   return (
     <div className="flex flex-col items-start gap-2 animate-fade-up">
       <div
-        className="max-w-[85%] rounded-2xl rounded-tl-sm px-4 py-3 font-arabic text-[15px] leading-relaxed"
+        className="max-w-[88%] rounded-2xl rounded-tl-sm px-4 py-3 font-arabic text-[15px] leading-relaxed space-y-1.5"
         style={{
           background: "linear-gradient(135deg, rgba(230,195,142,0.08), rgba(125,143,106,0.05))",
           border: "1px solid rgba(230,195,142,0.18)",
           color: "#F4F4F0",
         }}
       >
-        {msg.text}
+        {msg.validate && <p>{msg.validate}</p>}
+        {msg.reframe && (
+          <p
+            className="text-[14px] pt-1.5 border-t border-ivory/8"
+            style={{ color: "#cfd6c1" }}
+          >
+            {msg.reframe}
+          </p>
+        )}
       </div>
       {msg.action && (
         <button
@@ -275,7 +272,7 @@ function MessageBubble({ msg, onAction }: { msg: ChatMsg; onAction: (id: string)
           }}
         >
           {msg.actionDone ? <Check className="w-4 h-4" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {msg.action}
+          {msg.actionDone ? "تمام، عملتها" : msg.action}
         </button>
       )}
     </div>
