@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      interactions: {
+        Row: {
+          action: string | null
+          action_done: boolean
+          created_at: string
+          id: string
+          persona: string
+          reframe: string | null
+          session_id: string
+          user_text: string
+          validate: string | null
+        }
+        Insert: {
+          action?: string | null
+          action_done?: boolean
+          created_at?: string
+          id?: string
+          persona: string
+          reframe?: string | null
+          session_id: string
+          user_text: string
+          validate?: string | null
+        }
+        Update: {
+          action?: string | null
+          action_done?: boolean
+          created_at?: string
+          id?: string
+          persona?: string
+          reframe?: string | null
+          session_id?: string
+          user_text?: string
+          validate?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
