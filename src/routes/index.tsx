@@ -92,6 +92,12 @@ function Rafiq() {
     refreshStreak();
   }
 
+  async function handleConfirm(msgId: string) {
+    if (!isReady || !userId || !sessionId) return;
+    await confirmAction(msgId, userId, sessionId, persona);
+    refreshStreak();
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
       {showOnboarding && <Onboarding onDone={finishOnboarding} />}
@@ -190,7 +196,7 @@ function Rafiq() {
             <MessageBubble
               key={m.id}
               msg={m}
-              onConfirm={() => confirmAction(m.id, userId, sessionId, persona)}
+              onConfirm={() => handleConfirm(m.id)}
               onAlternative={() => swapAlternative(m.id, userId, persona)}
             />
           ))}
