@@ -18,35 +18,109 @@ export type Database = {
         Row: {
           action: string | null
           action_done: boolean
+          action_done_at: string | null
           created_at: string
+          emotional_tag: string | null
           id: string
+          parent_interaction_id: string | null
           persona: string
           reframe: string | null
+          response_mode: string | null
           session_id: string
+          session_ref: string | null
+          user_id: string | null
           user_text: string
           validate: string | null
         }
         Insert: {
           action?: string | null
           action_done?: boolean
+          action_done_at?: string | null
           created_at?: string
+          emotional_tag?: string | null
           id?: string
+          parent_interaction_id?: string | null
           persona: string
           reframe?: string | null
+          response_mode?: string | null
           session_id: string
+          session_ref?: string | null
+          user_id?: string | null
           user_text: string
           validate?: string | null
         }
         Update: {
           action?: string | null
           action_done?: boolean
+          action_done_at?: string | null
           created_at?: string
+          emotional_tag?: string | null
           id?: string
+          parent_interaction_id?: string | null
           persona?: string
           reframe?: string | null
+          response_mode?: string | null
           session_id?: string
+          session_ref?: string | null
+          user_id?: string | null
           user_text?: string
           validate?: string | null
+        }
+        Relationships: []
+      }
+      sessions: {
+        Row: {
+          created_at: string
+          id: string
+          message_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message_count?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          auth_user_id: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          last_seen_at: string
+          preferred_persona: string
+        }
+        Insert: {
+          auth_user_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          id: string
+          last_seen_at?: string
+          preferred_persona?: string
+        }
+        Update: {
+          auth_user_id?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          last_seen_at?: string
+          preferred_persona?: string
         }
         Relationships: []
       }

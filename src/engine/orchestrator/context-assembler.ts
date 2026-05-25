@@ -1,14 +1,13 @@
 /**
- * Context Assembler — pulls from all 5 memory layers and assembles
- * the AssembledMemory object that the Prompt Builder consumes.
+ * Context Assembler — pulls relevant memory from database tables and
+ * compresses it into AssembledMemory for the Prompt Builder.
  *
  * "Rafiq remembers stories, not just states."
  * This module translates DB rows → human narrative.
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { AssembledMemory } from "@/types/memory";
-import type { EmotionalState } from "@/types/memory";
+import type { AssembledMemory, EmotionalState } from "@/types/memory";
 import { buildRelationshipContinuity } from "@/engine/memory/relationship-memory";
 import { buildInitiativeObservation } from "@/engine/memory/initiative-memory";
 
@@ -72,10 +71,7 @@ export async function assembleMemory(params: {
   const lastAction = buildLastActionContext(interactions);
 
   // ── Current emotional signal (rule-based, no LLM) ─────────────────────
-  const currentEmotionalSignal = detectCurrentEmotion(
-    currentMessage,
-    emotional
-  );
+  const currentEmotionalSignal = detectCurrentEmotion(currentMessage, emotional);
 
   return {
     identityNarrative,
@@ -86,7 +82,7 @@ export async function assembleMemory(params: {
     hoursSinceLastSession,
     lastAction,
     streakStats: streak,
-    recentEmotions: emotional.map((e) => e.emotionalState),
+    recentEmotions: emotional.map((e) => e.emotional_state as EmotionalState),
     recentModes: interactions
       .map((i) => i.response_mode as import("@/types/companion").ResponseMode)
       .filter(Boolean),
@@ -211,12 +207,6 @@ function buildRecentHistoryNarrative(
     .join(" | ");
 }
 
-function buildPatternsNarrative(_userId: string): string {
-  // Phase 1: returns empty — pattern detector populates this in Phase 2
-  // The DB query would go here when pattern detection is active
-  return "";
-}
-
 function computeHoursSinceLastSession(
   interactions: Array<{ created_at: string }>
 ): number {
@@ -269,7 +259,7 @@ function detectCurrentEmotion(
   )
     return "anxious";
   if (
-    ["مشتت", "زحمة", "مش قادر أركز", "تقطع"].some((s) => lower.includes(s))
+    ["مشتت", "زحمة", "مش قادر أركز", "تقطع", "دوشة"].some((s) => lower.includes(s))
   )
     return "scattered";
   if (

@@ -15,11 +15,13 @@ import {
 
 const MODE_INSTRUCTIONS: Record<ResponseMode, string> = {
   validate_reframe_act: `
-ردك في ٣ أجزاء صغيرة:
+ردك في جزئين أساسيين + ثالث اختياري:
 ١) validate: سطر واحد يحتوي مشاعره بدفء (${LENGTH_CONSTRAINTS.VALIDATE_MAX_WORDS} كلمات كحد أقصى).
 ٢) reframe: سطر واحد يقلب زاوية الرؤية (${LENGTH_CONSTRAINTS.REFRAME_MAX_WORDS} كلمات كحد أقصى).
-٣) action: زرار بفعل جسدي صغير حقيقي (${LENGTH_CONSTRAINTS.ACTION_MAX_WORDS} كلمات كحد أقصى).
-OUTPUT JSON: {"validate":"...","reframe":"...","action":"..."}
+٣) action (اختياري): زرار بفعل جسدي صغير حقيقي (${LENGTH_CONSTRAINTS.ACTION_MAX_WORDS} كلمات).
+    حطه فقط لو الشخص دلوقتي محتاج حركة فعلاً (مشتت/متوتر/مكسل).
+    لو محتاج بس يفضفض أو يسمع كلامك، خلي action = "" — احترم اللحظة.
+OUTPUT: JSON فقط: {"validate":"...","reframe":"...","action":"..."}
 `.trim(),
 
   question_only: `

@@ -122,12 +122,11 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
 
     // ── Step 8: Update session message count (non-blocking) ──────────────
     const nextMsgCount = recentMessageCount + 1;
-    supabaseAdmin
+    void supabaseAdmin
       .from("sessions")
       .update({ message_count: nextMsgCount })
       .eq("id", sessionId)
-      .then(() => {})
-      .catch(() => {});
+      .then(() => undefined);
 
     // ── Step 9: Background memory compression (non-blocking) ─────────────
     if (nextMsgCount > 0 && nextMsgCount % 5 === 0) {
@@ -187,6 +186,7 @@ async function persistInteraction(params: {
     .from("interactions")
     .insert({
       user_id: params.userId,
+      session_id: params.sessionId,
       session_ref: params.sessionId,
       persona: params.persona,
       user_text: params.userText,
