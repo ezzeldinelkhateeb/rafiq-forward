@@ -246,6 +246,16 @@ function buildMemorySection(memory: AssembledMemory): string {
     parts.push(`[غياب]: بقاله ${days} أيام غايب عن الشات.`);
   }
 
+  // Sleep target config
+  if (memory.sleepTarget) {
+    parts.push(`[موعد نومه المستهدف]: ${memory.sleepTarget}`);
+  }
+
+  // Small pleasures / rewards
+  if (memory.smallPleasures && memory.smallPleasures.length > 0) {
+    parts.push(`[مكافآته المفضلة]: ${memory.smallPleasures.join("، ")}`);
+  }
+
   if (parts.length === 0) {
     return "";
   }

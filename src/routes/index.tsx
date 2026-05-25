@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Send, Sparkles, Check, Flame, RefreshCw } from "lucide-react";
+import { Send, Sparkles, Check, Flame, RefreshCw, Clock } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
 import { Onboarding } from "@/components/Onboarding";
@@ -272,6 +272,16 @@ function Rafiq() {
 
 // ─── Message Bubble ─────────────────────────────────────────────────────────
 
+function getGoogleCalendarUrl(actionName: string): string {
+  const text = encodeURIComponent(actionName);
+  const details = encodeURIComponent("خطوة عملية مقترحة من رفيق لمساعدتك في تحقيق أهدافك وتنظيم يومك.");
+  const now = new Date();
+  const start = now.toISOString().replace(/-|:|\.\d\d\d/g, "");
+  now.setHours(now.getHours() + 1);
+  const end = now.toISOString().replace(/-|:|\.\d\d\d/g, "");
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${text}&details=${details}&dates=${start}/${end}`;
+}
+
 function MessageBubble({
   msg,
   onConfirm,
@@ -334,6 +344,19 @@ function MessageBubble({
             {msg.actionDone ? <Check className="w-4 h-4" /> : <Sparkles className="w-3.5 h-3.5" />}
             {msg.actionDone ? "تمام، عملتها ✓" : msg.action}
           </button>
+
+          {!msg.actionDone && (
+            <a
+              href={getGoogleCalendarUrl(msg.action)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-arabic text-[12px] transition-all text-ivory/55 hover:text-ivory/85 border border-ivory/10 hover:border-ivory/25 bg-ivory/[0.02]"
+              title="أضف الخطوة دي لتقويم جوجل للتذكير"
+            >
+              <Clock className="w-3 h-3 text-[#E6C38E]" />
+              أضف للتقويم
+            </a>
+          )}
 
           {!msg.actionDone && !msg.alternativeTried && (
             <button

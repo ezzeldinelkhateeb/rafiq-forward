@@ -1,6 +1,7 @@
 /**
  * Dashboard Server Functions — pulls aggregated behavioral insights
  * and emotional timelines to display on the client dashboard.
+ * Supports updating personal settings like sleep target and rewards.
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -11,6 +12,8 @@ export interface DashboardData {
     goals: string[];
     struggles: string[];
     personality: string | null;
+    sleep_target: string | null;
+    small_pleasures: string[];
   } | null;
   latestSnapshot: string | null;
   patterns: Array<{
@@ -26,6 +29,8 @@ export interface DashboardData {
   }>;
 }
 
+// ─── Fetch Dashboard Data ──────────────────────────────────────────────────
+
 export const fetchDashboardData = createServerFn({ method: "POST" })
   .inputValidator((input: { userId: string }) => input)
   .handler(async ({ data }): Promise<DashboardData> => {
@@ -35,7 +40,7 @@ export const fetchDashboardData = createServerFn({ method: "POST" })
       await Promise.allSettled([
         supabaseAdmin
           .from("identity_memory")
-          .select("goals, struggles, personality")
+          .select("goals, struggles, personality, sleep_target, small_pleasures")
           .eq("user_id", userId)
           .single(),
         supabaseAdmin
@@ -66,6 +71,8 @@ export const fetchDashboardData = createServerFn({ method: "POST" })
             goals: identityResult.value.data.goals || [],
             struggles: identityResult.value.data.struggles || [],
             personality: identityResult.value.data.personality || null,
+            sleep_target: identityResult.value.data.sleep_target || null,
+            small_pleasures: identityResult.value.data.small_pleasures || [],
           }
         : null;
 
@@ -90,4 +97,30 @@ export const fetchDashboardData = createServerFn({ method: "POST" })
       patterns,
       emotionalTimeline,
     };
+  });
+
+// ─── Update Sleep Target & Small Pleasures ───────────────────────────────
+
+export const updateDashboardConfig = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      userId: string;
+      sleepTarget: string | null;
+      smallPleasures: string[];
+    }) => input
+  )
+  .handler(async ({ data }) => {
+    const { userId, sleepTarget, smallPleasures } = data;
+
+    const { error } = await supabaseAdmin
+      .from("identity_memory")
+      .upsert({
+        user_id: userId,
+        sleep_target: sleepTarget,
+        small_pleasures: smallPleasures,
+        updated_at: new Date().toISOString(),
+      });
+
+    if (error) throw new Error(error.message);
+    return { success: true };
   });

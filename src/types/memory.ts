@@ -101,4 +101,8 @@ export interface AssembledMemory {
   recentEmotions: EmotionalState[];
   /** Recent response modes history to avoid repetition */
   recentModes: import("./companion").ResponseMode[];
+  /** The user's sleep target (e.g. "11:00 PM") */
+  sleepTarget?: string | null;
+  /** List of favorite rewards */
+  smallPleasures?: string[];
 }

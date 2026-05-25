@@ -86,6 +86,8 @@ export async function assembleMemory(params: {
     recentModes: interactions
       .map((i) => i.response_mode as import("@/types/companion").ResponseMode)
       .filter(Boolean),
+    sleepTarget: identity?.sleep_target || null,
+    smallPleasures: identity?.small_pleasures || [],
   };
 }
 
@@ -94,7 +96,7 @@ export async function assembleMemory(params: {
 async function fetchIdentityMemory(userId: string) {
   const { data } = await supabaseAdmin
     .from("identity_memory")
-    .select("goals, struggles, personality, preferred_tone, trigger_words")
+    .select("goals, struggles, personality, preferred_tone, trigger_words, sleep_target, small_pleasures")
     .eq("user_id", userId)
     .single();
   return data;
