@@ -116,12 +116,11 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
     });
 
     // ── Step 8: Update session message count (non-blocking) ──────────────
-    supabaseAdmin
+    void supabaseAdmin
       .from("sessions")
       .update({ message_count: recentMessageCount + 1 })
       .eq("id", sessionId)
-      .then(() => {})
-      .catch(() => {});
+      .then(() => undefined);
 
     return parsed;
   });
@@ -174,6 +173,7 @@ async function persistInteraction(params: {
     .from("interactions")
     .insert({
       user_id: params.userId,
+      session_id: params.sessionId,
       session_ref: params.sessionId,
       persona: params.persona,
       user_text: params.userText,
