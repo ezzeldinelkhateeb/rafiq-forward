@@ -2,7 +2,7 @@
  * Followup Server Functions — keep Rafiq present after every action.
  *
  * 1. confirmAndContinue: marks an action done, then immediately generates
- *    a short motivational follow-up message + next micro-step.
+ *    a short motivational follow-up message + next planning/serious step.
  * 2. regenerateAlternative: when the user can't do the suggested action,
  *    swap the action in place with an easier alternative path.
  */
@@ -47,6 +47,26 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
       .eq("id", data.interactionId)
       .eq("user_id", data.userId);
 
+    // 3. Fetch user's identity memory (goals, struggles) to make planning specific
+    const { data: identity } = await supabaseAdmin
+      .from("identity_memory")
+      .select("goals, struggles, personality")
+      .eq("user_id", data.userId)
+      .single();
+
+    // 4. Log motivated state to emotional timeline (non-blocking)
+    supabaseAdmin
+      .from("emotional_timeline")
+      .insert({
+        user_id: data.userId,
+        session_id: data.sessionId,
+        emotional_state: "motivated",
+        intensity: 7,
+        source_text: `[نفّذ الأكشن: ${original?.action ?? ""}]`,
+      })
+      .then(() => {})
+      .catch(() => {});
+
     const voice = PERSONA_VOICES[data.persona];
 
     const systemInstruction = `
@@ -54,19 +74,26 @@ ${PHILOSOPHY_PROMPT_FRAGMENT}
 
 أنت رفيق في صورة "${voice.name}": ${voice.description}
 
-اللي قدامك لسه نفّذ الخطوة اللي اقترحتها — ${voice.celebrateStyle}.
-ردك دلوقتي عبارة عن جزئين قصيرين:
-١) تحفيز قصير وحقيقي على إنجازه (${LENGTH_CONSTRAINTS.VALIDATE_MAX_WORDS} كلمات كحد أقصى) — مش مجاملة جوفاء.
-٢) خطوة جديدة صغيرة جداً تبني على اللي عمله الآن، تستمر الزخم (${LENGTH_CONSTRAINTS.ACTION_MAX_WORDS} كلمات كحد أقصى) — حركة جسدية حقيقية.
+اللي قدامك لسه نفّذ الخطوة العملية اللي اقترحتها عليه.
+مهمتك الآن:
+١) احتفل معاه وشجعه بكلمة جدعة ودودة وبسيطة جداً (${LENGTH_CONSTRAINTS.VALIDATE_MAX_WORDS} كلمات كحد أقصى) — قدّر حركته.
+٢) بدلاً من تكرار عبارات التشجيع التافهة أو إعطائه خطوة مادية بسيطة أخرى، انقل الحوار لمرحلة "الجد والتنظيم والتخطيط": ساعده يرتب أفكاره المشوشة، وخذ بيده لوضع خطة أو جدول بسيط وعملي للخروج من المشكلة التي يعاني منها حالياً (بناءً على أهدافه وتحدياته المذكورة أدناه).
+٣) اقترح عليه خطوة تخطيطية أو تنظيمية محددة كـ action (مثل: كتابة أول ٣ أولويات وراك، تحديد ساعة معينة للبدء، أو كتابة جدول لليوم).
+
+بيانات المستخدم لمساعدتك في التوجيه:
+الأهداف المسجلة له: ${JSON.stringify(identity?.goals || [])}
+التحديات والصراعات الحالية: ${JSON.stringify(identity?.struggles || [])}
+ملخص شخصيته: "${identity?.personality || ""}"
 
 OUTPUT: JSON فقط بدون markdown:
-{"validate":"...","action":"..."}
+{"validate":"الاحتفال القصير + التوجيه والبدء في ترتيب الأفكار والخطة بالعامية المصرية وبنبرة جدعة وحنونة","action":"الخطوة التخطيطية العملية القادمة (مثال: اكتبلي أهم ٣ حاجات وراك دلوقتي)"}
 `.trim();
 
     const userPrompt = `
-المستخدم قال أصلاً: "${original?.user_text ?? ""}"
-أنت اقترحت: "${original?.action ?? ""}"
-وهو دلوقتي نفّذها. هاته للخطوة الجاية.
+المستند الأصلي للمحادثة:
+المستخدم قال: "${original?.user_text ?? ""}"
+أنت اقترحت له: "${original?.action ?? ""}"
+وهو دلوقتي نفّذ الخطوة دي بنجاح. هاته للخطوة التخطيطية الجاية للبدء في حل مشكلته الكبيرة وترتيب أفكاره.
 `.trim();
 
     const aiResult = await callGemini({
@@ -74,7 +101,7 @@ OUTPUT: JSON فقط بدون markdown:
       systemInstruction,
       userMessage: userPrompt,
       temperature: AI_CONFIG.TEMPERATURE.COMPANION,
-      maxOutputTokens: 200,
+      maxOutputTokens: 1000,
       expectJson: true,
       responseSchema: {
         type: "object",
@@ -89,7 +116,7 @@ OUTPUT: JSON فقط بدون markdown:
     const validate =
       String(aiResult.json?.validate ?? "").trim() || "عاش يا بطل 👊";
     const action =
-      String(aiResult.json?.action ?? "").trim() || "خد نَفَس عميق تاني";
+      String(aiResult.json?.action ?? "").trim() || "اكتبلي جدول يومك";
 
     // Persist as new interaction (parent = original)
     const { data: saved } = await supabaseAdmin
@@ -148,7 +175,7 @@ OUTPUT: JSON فقط: {"action":"..."}
 `.trim();
 
     const userPrompt = `
-المستخدم قال: "${original?.user_text ?? ""}"
+المستحدم قال: "${original?.user_text ?? ""}"
 الخطوة اللي مش قادر عليها: "${original?.action ?? ""}"
 هاته بديل أخف.
 `.trim();
@@ -158,7 +185,7 @@ OUTPUT: JSON فقط: {"action":"..."}
       systemInstruction,
       userMessage: userPrompt,
       temperature: 0.9,
-      maxOutputTokens: 80,
+      maxOutputTokens: 800,
       expectJson: true,
       responseSchema: {
         type: "object",

@@ -120,6 +120,21 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       // Non-blocking — never block UX on persistence failure
     });
 
+    // ── Step 7.5: Log emotional state to timeline (non-blocking) ─────────
+    if (memory.currentEmotionalSignal && memory.currentEmotionalSignal !== "unknown") {
+      supabaseAdmin
+        .from("emotional_timeline")
+        .insert({
+          user_id: userId,
+          session_id: sessionId,
+          emotional_state: memory.currentEmotionalSignal,
+          intensity: 5,
+          source_text: userText,
+        })
+        .then(() => {})
+        .catch(() => {});
+    }
+
     // ── Step 8: Update session message count (non-blocking) ──────────────
     const nextMsgCount = recentMessageCount + 1;
     void supabaseAdmin

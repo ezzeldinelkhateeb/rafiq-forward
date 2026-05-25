@@ -5,6 +5,7 @@ import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
 import { Onboarding } from "@/components/Onboarding";
 import { ProactiveCard } from "@/components/chat/ProactiveCard";
+import { DashboardDrawer } from "@/components/chat/DashboardDrawer";
 import { useSession } from "@/hooks/useSession";
 import { useRafiqChat } from "@/hooks/useRafiqChat";
 import { useProactive } from "@/hooks/useProactive";
@@ -38,6 +39,7 @@ function Rafiq() {
 
   const [input, setInput] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showDashboard, setShowDashboard] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Determine current orb mood based on thinking state and latest message's emotional tag
@@ -101,18 +103,26 @@ function Rafiq() {
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
       {showOnboarding && <Onboarding onDone={finishOnboarding} />}
+      <DashboardDrawer
+        userId={userId}
+        open={showDashboard}
+        onOpenChange={setShowDashboard}
+        streakDone={streak.done}
+        streakTotal={streak.total}
+      />
 
       {/* Header */}
       <header className="relative pt-5 pb-2 px-4 flex items-center justify-between gap-3">
-        <div
-          className="flex items-center gap-1.5 text-xs font-arabic text-ivory/50 px-2 py-1 rounded-full bg-ivory/[0.03] border border-ivory/8"
-          title="عدد الحركات اللي نفّذتها"
+        <button
+          onClick={() => setShowDashboard(true)}
+          className="flex items-center gap-1.5 text-xs font-arabic text-ivory/50 px-2.5 py-1 rounded-full bg-ivory/[0.03] hover:bg-ivory/[0.07] border border-ivory/8 hover:border-[#E6C38E]/30 cursor-pointer transition-all active:scale-95"
+          title="افتح لوحة البيانات وعي رفيق"
         >
-          <Flame className="w-3.5 h-3.5" style={{ color: "#E6C38E" }} />
+          <Flame className="w-3.5 h-3.5 animate-pulse" style={{ color: "#E6C38E" }} />
           <span>{streak.done}</span>
           <span className="text-ivory/25">/</span>
           <span className="text-ivory/40">{streak.total}</span>
-        </div>
+        </button>
         <img
           src={logoUrl}
           alt="رفيق"

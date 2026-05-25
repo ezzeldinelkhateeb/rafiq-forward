@@ -75,7 +75,7 @@ export async function callGemini(
                   reframe: { type: "string" },
                   action: { type: "string" },
                 },
-                required: ["validate", "reframe", "action"],
+                required: ["validate"],
               },
             }
           : {}),

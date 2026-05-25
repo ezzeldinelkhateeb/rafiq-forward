@@ -7,11 +7,15 @@ interface SummarizerOutput {
   struggles: string[];
   personality: string;
   relationshipSnapshot: string;
+  patterns?: Array<{
+    pattern_type: "doomscroll" | "avoidance" | "collapse_hour" | "focus_window";
+    description: string;
+  }>;
 }
 
 /**
- * Summarizes the session and compresses the conversation history into narrative summaries
- * and structured identity memory. Runs asynchronously in the background.
+ * Summarizes the session and compresses the conversation history into narrative summaries,
+ * structured identity memory, and behavioral patterns. Runs asynchronously in the background.
  */
 export async function summarizeSessionAndCompress(
   userId: string,
@@ -60,6 +64,11 @@ export async function summarizeSessionAndCompress(
 2) استخرج الصراعات والتحديات (struggles) التي يواجهها حالياً (مثل: السهر، المماطلة، التشتت). ادمجها مع الصراعات الحالية.
 3) حدث ملخص الشخصية (personality) في سطرين يصف حالته وسلوكه الحالي (مثل: "طالب جامعي يسهر كثيراً بسبب الهاتف ويعاني من ضغط المذاكرة ولكنه يعافر").
 4) اكتب ملخصاً سردياً قصيراً للعلاقة والتواصل الحالي (relationshipSnapshot) في فقرة واحدة دافئة بالعامية المصرية توثق مسيرته الأخيرة (مثل: "رجع بعد غياب يومين وكان تعبان بسبب الموبايل، قمنا بخطوة غسل الوجه وبدأ يستعيد همته لغلق الشاشات").
+5) حلل سلوكه واستنتج أي أنماط سلوكية متكررة (patterns) تلاحظها في كلامه الأخير. حدد نوع النمط فقط من هذه الأنواع الأربعة بالضبط:
+   - 'doomscroll' (إذا كان يضيع الساعات في لف السوشيال ميديا والتليفون).
+   - 'avoidance' (إذا كان يتهرب من الخطوات العملية أو يختلق الأعذار للمماطلة).
+   - 'collapse_hour' (إذا كان ينهار نفسياً أو مزاجياً خصوصاً في ساعات الليل المتأخرة).
+   - 'focus_window' (إذا أظهر تركيزاً ممتازاً وأنجز خطواته بشكل إيجابي).
 
 بيانات المستخدم الحالية:
 الأهداف الحالية: ${JSON.stringify(existingGoals)}
@@ -72,7 +81,13 @@ export async function summarizeSessionAndCompress(
   "goals": ["هدف 1", "هدف 2"],
   "struggles": ["صراع 1", "صراع 2"],
   "personality": "ملخص الشخصية الجديد هنا...",
-  "relationshipSnapshot": "الملخص السردي للعلاقة هنا..."
+  "relationshipSnapshot": "الملخص السردي للعلاقة هنا...",
+  "patterns": [
+    {
+      "pattern_type": "doomscroll",
+      "description": "تصفح ولف الهاتف بشكل مفرط وتضييع الوقت في السوشيال ميديا"
+    }
+  ]
 }
 `.trim();
 
@@ -98,7 +113,18 @@ export async function summarizeSessionAndCompress(
             items: { type: "string" }
           },
           personality: { type: "string" },
-          relationshipSnapshot: { type: "string" }
+          relationshipSnapshot: { type: "string" },
+          patterns: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                pattern_type: { type: "string", enum: ["doomscroll", "avoidance", "collapse_hour", "focus_window"] },
+                description: { type: "string" }
+              },
+              required: ["pattern_type", "description"]
+            }
+          }
         },
         required: ["goals", "struggles", "personality", "relationshipSnapshot"]
       }
@@ -149,6 +175,43 @@ export async function summarizeSessionAndCompress(
 
       if (snapshotErr) {
         console.error("[Memory Summarizer] Error inserting memory snapshot:", snapshotErr);
+      }
+    }
+
+    // 7. Insert or update behavioral patterns
+    if (output.patterns && output.patterns.length > 0) {
+      for (const p of output.patterns) {
+        if (!p.pattern_type || !p.description) continue;
+
+        // Check if pattern already exists for user
+        const { data: existingPattern } = await supabaseAdmin
+          .from("behavioral_patterns")
+          .select("id, occurrence_count")
+          .eq("user_id", userId)
+          .eq("pattern_type", p.pattern_type)
+          .maybeSingle();
+
+        if (existingPattern) {
+          await supabaseAdmin
+            .from("behavioral_patterns")
+            .update({
+              occurrence_count: (existingPattern.occurrence_count || 1) + 1,
+              description: p.description,
+              last_seen_at: new Date().toISOString(),
+            })
+            .eq("id", existingPattern.id);
+        } else {
+          await supabaseAdmin
+            .from("behavioral_patterns")
+            .insert({
+              user_id: userId,
+              pattern_type: p.pattern_type,
+              description: p.description,
+              occurrence_count: 1,
+              first_seen_at: new Date().toISOString(),
+              last_seen_at: new Date().toISOString(),
+            });
+        }
       }
     }
 
