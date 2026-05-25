@@ -1,16 +1,13 @@
 /**
- * Context Assembler — pulls from all 5 memory layers and assembles
- * the AssembledMemory object that the Prompt Builder consumes.
+ * Context Assembler — pulls relevant memory from `interactions` and
+ * compresses it into AssembledMemory for the Prompt Builder.
  *
- * "Rafiq remembers stories, not just states."
- * This module translates DB rows → human narrative.
+ * Phase 1: only `interactions` table is used. Future layers (identity,
+ * snapshots, emotional timeline) will plug in here without API changes.
  */
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import type { AssembledMemory } from "@/types/memory";
-import type { EmotionalState } from "@/types/memory";
-
-// ─── Main Assembler ────────────────────────────────────────────────────────
+import type { AssembledMemory, EmotionalState } from "@/types/memory";
 
 export async function assembleMemory(params: {
   userId: string;
@@ -18,83 +15,31 @@ export async function assembleMemory(params: {
 }): Promise<AssembledMemory> {
   const { userId, currentMessage } = params;
 
-  // Parallel DB queries — all 5 layers
-  const [
-    identityResult,
-    recentInteractions,
-    relationshipSnapshot,
-    emotionalHistory,
-    streakResult,
-  ] = await Promise.allSettled([
-    fetchIdentityMemory(userId),
+  const [recentResult, streakResult] = await Promise.allSettled([
     fetchRecentInteractions(userId),
-    fetchLatestSnapshot(userId, "relationship"),
-    fetchRecentEmotionalTimeline(userId),
     fetchStreakStats(userId),
   ]);
 
-  // Extract values safely
-  const identity =
-    identityResult.status === "fulfilled" ? identityResult.value : null;
   const interactions =
-    recentInteractions.status === "fulfilled" ? recentInteractions.value : [];
-  const relSnapshot =
-    relationshipSnapshot.status === "fulfilled"
-      ? relationshipSnapshot.value
-      : null;
-  const emotional =
-    emotionalHistory.status === "fulfilled" ? emotionalHistory.value : [];
+    recentResult.status === "fulfilled" ? recentResult.value : [];
   const streak =
     streakResult.status === "fulfilled"
       ? streakResult.value
       : { done: 0, total: 0 };
 
-  // ── Layer 1: Identity narrative ────────────────────────────────────────
-  const identityNarrative = buildIdentityNarrative(identity);
-
-  // ── Layer 2: Recent history narrative ─────────────────────────────────
-  const recentHistoryNarrative = buildRecentHistoryNarrative(interactions);
-
-  // ── Layer 3 & 4: Relationship + emotional narrative ────────────────────
-  const relationshipNarrative = relSnapshot?.content ?? "";
-
-  // ── Patterns narrative ─────────────────────────────────────────────────
-  const patternsNarrative = buildPatternsNarrative(userId);
-
-  // ── Timing data ────────────────────────────────────────────────────────
-  const hoursSinceLastSession = computeHoursSinceLastSession(interactions);
-
-  // ── Last action ────────────────────────────────────────────────────────
-  const lastAction = buildLastActionContext(interactions);
-
-  // ── Current emotional signal (rule-based, no LLM) ─────────────────────
-  const currentEmotionalSignal = detectCurrentEmotion(
-    currentMessage,
-    emotional
-  );
-
   return {
-    identityNarrative,
-    recentHistoryNarrative,
-    relationshipNarrative,
-    patternsNarrative,
-    currentEmotionalSignal,
-    hoursSinceLastSession,
-    lastAction,
+    identityNarrative: "",
+    recentHistoryNarrative: buildRecentHistoryNarrative(interactions),
+    relationshipNarrative: "",
+    patternsNarrative: "",
+    currentEmotionalSignal: detectCurrentEmotion(currentMessage),
+    hoursSinceLastSession: computeHoursSinceLastSession(interactions),
+    lastAction: buildLastActionContext(interactions),
     streakStats: streak,
   };
 }
 
 // ─── DB Fetchers ───────────────────────────────────────────────────────────
-
-async function fetchIdentityMemory(userId: string) {
-  const { data } = await supabaseAdmin
-    .from("identity_memory")
-    .select("goals, struggles, personality, preferred_tone, trigger_words")
-    .eq("user_id", userId)
-    .single();
-  return data;
-}
 
 async function fetchRecentInteractions(userId: string) {
   const { data } = await supabaseAdmin
@@ -105,31 +50,6 @@ async function fetchRecentInteractions(userId: string) {
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(8);
-  return data ?? [];
-}
-
-async function fetchLatestSnapshot(
-  userId: string,
-  type: "relationship" | "weekly" | "emotional_arc"
-) {
-  const { data } = await supabaseAdmin
-    .from("memory_snapshots")
-    .select("content, covers_from, covers_to, created_at")
-    .eq("user_id", userId)
-    .eq("snapshot_type", type)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-  return data;
-}
-
-async function fetchRecentEmotionalTimeline(userId: string) {
-  const { data } = await supabaseAdmin
-    .from("emotional_timeline")
-    .select("emotional_state, intensity, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(10);
   return data ?? [];
 }
 
@@ -153,30 +73,6 @@ async function fetchStreakStats(userId: string) {
 
 // ─── Narrative Builders ────────────────────────────────────────────────────
 
-function buildIdentityNarrative(
-  identity: {
-    goals: string[] | null;
-    struggles: string[] | null;
-    personality: string | null;
-    preferred_tone: string | null;
-    trigger_words: string[] | null;
-  } | null
-): string {
-  if (!identity) return "";
-
-  const parts: string[] = [];
-  if (identity.goals?.length) {
-    parts.push(`هدفه: ${identity.goals.join("، ")}`);
-  }
-  if (identity.struggles?.length) {
-    parts.push(`بيصارع: ${identity.struggles.join("، ")}`);
-  }
-  if (identity.personality) {
-    parts.push(identity.personality);
-  }
-  return parts.join(". ");
-}
-
 function buildRecentHistoryNarrative(
   interactions: Array<{
     user_text: string;
@@ -187,10 +83,7 @@ function buildRecentHistoryNarrative(
   }>
 ): string {
   if (interactions.length === 0) return "";
-
-  // Take last 4, reverse to chronological order
   const recent = [...interactions].reverse().slice(-4);
-
   return recent
     .map((r) => {
       const actionStatus = r.action
@@ -203,20 +96,12 @@ function buildRecentHistoryNarrative(
     .join(" | ");
 }
 
-function buildPatternsNarrative(_userId: string): string {
-  // Phase 1: returns empty — pattern detector populates this in Phase 2
-  // The DB query would go here when pattern detection is active
-  return "";
-}
-
 function computeHoursSinceLastSession(
   interactions: Array<{ created_at: string }>
 ): number {
   if (interactions.length === 0) return 0;
-  // interactions are ordered DESC, so [0] is most recent
   const lastAt = new Date(interactions[0].created_at);
-  const now = new Date();
-  return (now.getTime() - lastAt.getTime()) / (1000 * 60 * 60);
+  return (Date.now() - lastAt.getTime()) / (1000 * 60 * 60);
 }
 
 function buildLastActionContext(
@@ -226,50 +111,26 @@ function buildLastActionContext(
     created_at: string;
   }>
 ): AssembledMemory["lastAction"] {
-  // Find most recent interaction with an action
   const withAction = interactions.find((i) => i.action);
   if (!withAction || !withAction.action) return undefined;
-
   const daysAgo = Math.floor(
     (Date.now() - new Date(withAction.created_at).getTime()) /
       (1000 * 60 * 60 * 24)
   );
-
-  return {
-    text: withAction.action,
-    done: withAction.action_done,
-    daysAgo,
-  };
+  return { text: withAction.action, done: withAction.action_done, daysAgo };
 }
 
-function detectCurrentEmotion(
-  message: string,
-  _recentEmotional: Array<{ emotional_state: string }>
-): EmotionalState {
+function detectCurrentEmotion(message: string): EmotionalState {
   const lower = message.toLowerCase();
-
-  if (
-    ["تعبت", "مش كويس", "صعب", "ضايق", "مستنزف", "تعب"].some((s) =>
-      lower.includes(s)
-    )
-  )
+  if (["تعبت", "مش كويس", "صعب", "ضايق", "مستنزف", "تعب"].some((s) => lower.includes(s)))
     return "drained";
-  if (
-    ["قلقان", "خايف", "مش متأكد", "توتر", "ضغط"].some((s) =>
-      lower.includes(s)
-    )
-  )
+  if (["قلقان", "خايف", "مش متأكد", "توتر", "ضغط"].some((s) => lower.includes(s)))
     return "anxious";
-  if (
-    ["مشتت", "زحمة", "مش قادر أركز", "تقطع"].some((s) => lower.includes(s))
-  )
+  if (["مشتت", "زحمة", "مش قادر أركز", "تقطع", "دوشة"].some((s) => lower.includes(s)))
     return "scattered";
-  if (
-    ["عملت", "خلصت", "أنجزت", "تمام", "كويس"].some((s) => lower.includes(s))
-  )
+  if (["عملت", "خلصت", "أنجزت", "تمام", "كويس"].some((s) => lower.includes(s)))
     return "motivated";
   if (["بدأت", "راجع", "حاول", "هحاول"].some((s) => lower.includes(s)))
     return "rebuilding";
-
   return "unknown";
 }
