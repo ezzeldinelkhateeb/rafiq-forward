@@ -33,6 +33,8 @@ export interface GeminiCallParams {
   maxOutputTokens?: number;
   /** If true, expects JSON output and parses it */
   expectJson?: boolean;
+  /** Optional custom schema for structured JSON output */
+  responseSchema?: Record<string, any>;
 }
 
 export interface GeminiCallResult {
@@ -64,7 +66,18 @@ export async function callGemini(
         temperature,
         maxOutputTokens,
         ...(params.expectJson
-          ? { responseMimeType: "application/json" }
+          ? {
+              responseMimeType: "application/json",
+              responseSchema: params.responseSchema ?? {
+                type: "object",
+                properties: {
+                  validate: { type: "string" },
+                  reframe: { type: "string" },
+                  action: { type: "string" },
+                },
+                required: ["validate", "reframe", "action"],
+              },
+            }
           : {}),
       },
     });
@@ -72,14 +85,35 @@ export async function callGemini(
     const raw = response.text ?? "";
 
     if (params.expectJson) {
+      // Find first '{' and last '}' to extract JSON block robustly
+      const firstBrace = raw.indexOf("{");
+      const lastBrace = raw.lastIndexOf("}");
+      
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        const jsonCandidate = raw.slice(firstBrace, lastBrace + 1);
+        try {
+          const parsed = JSON.parse(jsonCandidate);
+          return { text: raw, json: parsed };
+        } catch (e) {
+          // Attempt trailing comma cleanup
+          try {
+            const cleaned = jsonCandidate.replace(/,\s*([\]}])/g, '$1');
+            const parsed = JSON.parse(cleaned);
+            return { text: raw, json: parsed };
+          } catch {
+            console.error("[ai-client] Robust JSON extraction failed to parse:", jsonCandidate);
+          }
+        }
+      }
+      
+      // Fallback: simple cleanup
       const cleaned = raw
-        .replace(/^```json\s*/i, "")
+        .replace(/^```(?:json|js|javascript)?\s*/i, "")
         .replace(/\s*```$/i, "")
         .trim();
       try {
         return { text: raw, json: JSON.parse(cleaned) };
       } catch {
-        // JSON parse failed — return raw text, let caller handle fallback
         return { text: raw, json: undefined };
       }
     }

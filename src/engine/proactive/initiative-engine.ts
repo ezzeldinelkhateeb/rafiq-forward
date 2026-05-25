@@ -52,13 +52,35 @@ function checkUnfinishedAction(ctx: TriggerContext): TriggerResult {
   };
 }
 
+/** Loading app during late night hours (11 PM - 4 AM) and > 16h since last session */
+function checkLateNight(ctx: TriggerContext): TriggerResult {
+  const hour = ctx.hourOfDay;
+  return {
+    triggered: (hour >= 23 || hour <= 4) && ctx.hoursSinceLastSession > 16,
+    type: "late_night_awareness",
+    priority: 2,
+  };
+}
+
+/** Low action completion rate (< 0.2) and > 24h gap */
+function checkRelapseSignal(ctx: TriggerContext): TriggerResult {
+  return {
+    triggered:
+      ctx.recentActionDoneRate < 0.2 &&
+      ctx.recentSessionCount >= 3 &&
+      ctx.hoursSinceLastSession > 24,
+    type: "relapse_signal",
+    priority: 3,
+  };
+}
+
 /** 5+ days with no sessions at all */
 function checkProlongedStagnation(ctx: TriggerContext): TriggerResult {
   return {
     triggered:
       ctx.recentSessionCount === 0 && ctx.hoursSinceLastSession > 120,
     type: "prolonged_stagnation",
-    priority: 3,
+    priority: 4,
   };
 }
 
@@ -70,7 +92,7 @@ function checkStreakMomentum(ctx: TriggerContext): TriggerResult {
       ctx.recentSessionCount >= 3 &&
       ctx.hoursSinceLastSession < 48,
     type: "streak_momentum",
-    priority: 4,
+    priority: 5,
   };
 }
 
@@ -88,6 +110,8 @@ export async function evaluateProactiveTriggers(
   const triggers = [
     checkReturnAfterAbsence(ctx),
     checkUnfinishedAction(ctx),
+    checkLateNight(ctx),
+    checkRelapseSignal(ctx),
     checkProlongedStagnation(ctx),
     checkStreakMomentum(ctx),
   ]
@@ -167,19 +191,19 @@ async function buildTriggerContext(userId: string): Promise<TriggerContext> {
  * Keeping static variants prevents prompt engineering for simple cases.
  */
 export const NUDGE_TEMPLATES: Record<
-  Exclude<ProactiveTrigger, "relapse_signal" | "none">,
+  Exclude<ProactiveTrigger, "none">,
   string[]
 > = {
   return_after_absence: [
-    "حمد الله على السلامة! فين أراضيك؟ 👀",
-    "غبت فين يا صديق؟ لعله خير؟",
-    "وحشتنا والله.. طمني عليك، عامل إيه؟",
-    "طولت الغيبة المرة دي.. كله تمام؟",
+    "حمد الله على السلامة يا صديقي، غبت فين؟ 👀",
+    "غيبتك طالت.. لعله خير؟",
+    "وحشتنا والله يا غالي.. طمني، عامل إيه النهاردة؟",
+    "طولت الغيبة المرة دي.. كله تمام معاك؟",
   ],
   unfinished_action: [
     "شكلنا كسلنا عن الخطوة اللي فاتت.. جه أوانها ولا إيه؟ 😉",
-    "الحاجة اللي اتفقنا عليها لسه مستنياك على فكرة! 🎯",
-    "الخطوة الصغيرة اللي اتفقنا عليها.. عملت فيها إيه؟",
+    "الخطوة الصغيرة اللي اتفقنا عليها لسه مستنياك على فكرة! 🎯",
+    "فاكر الحاجة العملية اللي فكرنا فيها؟ لسه وقتها.",
   ],
   prolonged_stagnation: [
     "فين أيامك؟ وحشتنا دردشتنا.. نبدأ خطوة جديدة سوا؟",
@@ -187,9 +211,19 @@ export const NUDGE_TEMPLATES: Record<
     "أنا دايماً هنا في ضهرك لو دماغك زحمتك وحبيت تفصل.",
   ],
   streak_momentum: [
-    "عاش يا بطل! شايفك بتعفّر وبتتحرك صح 👊",
-    "الأسبوع ده كان ضرب نار.. إيه الخطوة الجاية عشان نكمل؟",
-    "الزخم حلو والفرمة ماشية تمام، كمل كدة ومتوقفش!",
+    "عاش يا بطل! شايفك بتعفّر وبتتحرك صح 👊 كمل ومتوقفش!",
+    "الأسبوع ده كان ضرب نار.. إيه الخطوة الجاية عشان نحافظ على الفرمة؟",
+    "الزخم حلو والفرمة ماشية تمام، كمل كدة وبلاش تقف!",
+  ],
+  relapse_signal: [
+    "حاسس إن الليلة تقيلة عليك شوية.. متسيبش نفسك للدوامة.",
+    "لو حسيت إنك بتضيع، أنا في ضهرك.. اقفل الشاشة وتعال ندردش ثواني.",
+    "شكل اللف في الموبايل واكل دماغك.. سيب الموبايل وخد نفس عميق.",
+  ],
+  late_night_awareness: [
+    "سهران ليه لحد دلوقتي يا بطل؟ كله تمام؟ 🌙",
+    "الليل سكونه حلو، بس السهر بيتعب.. حط التليفون بعيد ونم.",
+    "سحلة نص الليل دي متعبة.. أنا هنا لو حابب تفصل وتنام.",
   ],
 };
 
@@ -198,7 +232,7 @@ export const NUDGE_TEMPLATES: Record<
  * No LLM call for basic nudges (fast, cheap, predictable).
  */
 export function pickNudgeText(
-  type: Exclude<ProactiveTrigger, "relapse_signal" | "none">,
+  type: Exclude<ProactiveTrigger, "none">,
   lastActionText?: string | null
 ): string {
   const templates = NUDGE_TEMPLATES[type];
@@ -227,7 +261,7 @@ export async function buildProactiveNudge(
 
   const { type, ctx } = result;
 
-  if (type === "relapse_signal" || type === "none") {
+  if (type === "none") {
     return null;
   }
 

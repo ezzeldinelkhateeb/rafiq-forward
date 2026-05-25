@@ -22,7 +22,17 @@ export type ResponseMode =
   | "celebrate"              // A win happened — warm, brief, forward-looking
   | "challenge"              // Coach mode: push back, don't coddle
   | "followup"               // Reference an unfinished action from last session
-  | "silence_breaking";      // Rafiq initiates after prolonged inactivity
+  | "silence_breaking"       // Rafiq initiates after prolonged inactivity
+  | "playful_observation"    // Witty Egyptian teasing about a habit
+  | "deep_reflection"        // Quiet, philosophical validation
+  | "interruption_pattern"   // Interrupting a negative doom loop immediately
+  | "late_night_softness"    // Gentle, low-energy support for late hours
+  | "momentum_push"          // Encouraging push to keep going
+  | "relapse_detection"      // Noticing signs of slipping back
+  | "emotional_mirroring"    // Reflecting back their current state to show empathy
+  | "micro_story"            // Sharing a 1-sentence Egyptian analogy/story
+  | "tough_love"             // Direct, warm, but firm pushback
+  | "quiet_presence";        // Ultra-short comforting silence (just validation, no advice)
 
 // ─── Rafiq Reply ─────────────────────────────────────────────────────────────
 
@@ -67,7 +77,8 @@ export type ProactiveTrigger =
   | "unfinished_action"      // Last action_done = false, session > 24h ago
   | "streak_momentum"        // 3+ actions completed in past week
   | "prolonged_stagnation"   // No sessions in 5+ days
-  | "relapse_signal"         // Current time matches historical collapse_hour
+  | "relapse_signal"         // Signs of slipping back/relapsing
+  | "late_night_awareness"   // Messaging late at night (slowing down/slowing)
   | "none";                  // No nudge needed
 
 export interface ProactiveNudge {

@@ -19,6 +19,7 @@ import { assembleMemory } from "@/engine/orchestrator/context-assembler";
 import { selectResponseMode } from "@/engine/orchestrator/response-strategy";
 import { buildPrompt } from "@/engine/orchestrator/prompt-builder";
 import { analyzeBehavioralState } from "@/engine/analyzer/state-machine";
+import { summarizeSessionAndCompress } from "@/engine/memory/memory-summarizer";
 import type { RafiqReply, Persona } from "@/types/companion";
 
 // ─── Main Chat Function ────────────────────────────────────────────────────
@@ -63,9 +64,11 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       hoursSinceLastSession: memory.hoursSinceLastSession,
       recentActionDoneRate,
       sessionCount: memory.streakStats.total,
+      recentEmotions: memory.recentEmotions,
     });
 
     // ── Step 3: Select response mode ────────────────────────────────────
+    const isActionCompletion = userText.startsWith("تمام، عملت ده:") || userText === "تمام، عملتها ✓";
     const mode = selectResponseMode({
       behaviorState: behaviorAnalysis.state,
       persona,
@@ -78,6 +81,8 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       userMessageLength: userText.length,
       consecutiveAdviceCount,
       hasRelationshipMemory: memory.relationshipNarrative.length > 0,
+      isActionCompletion,
+      recentModes: memory.recentModes,
     });
 
     // ── Step 4: Build prompt ─────────────────────────────────────────────
@@ -93,7 +98,7 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       model: AI_CONFIG.PRIMARY_MODEL,
       systemInstruction,
       userMessage,
-      temperature: AI_CONFIG.TEMPERATURE.COMPANION,
+      temperature: AI_CONFIG.COMPANION_TEMPERATURES[mode] ?? AI_CONFIG.TEMPERATURE.COMPANION,
       maxOutputTokens: AI_CONFIG.MAX_TOKENS.COMPANION,
       expectJson: true,
     });
@@ -116,12 +121,20 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
     });
 
     // ── Step 8: Update session message count (non-blocking) ──────────────
+    const nextMsgCount = recentMessageCount + 1;
     supabaseAdmin
       .from("sessions")
-      .update({ message_count: recentMessageCount + 1 })
+      .update({ message_count: nextMsgCount })
       .eq("id", sessionId)
       .then(() => {})
       .catch(() => {});
+
+    // ── Step 9: Background memory compression (non-blocking) ─────────────
+    if (nextMsgCount > 0 && nextMsgCount % 5 === 0) {
+      summarizeSessionAndCompress(userId, sessionId).catch((e) => {
+        console.error("[chat.fn] Background memory compression error:", e);
+      });
+    }
 
     return parsed;
   });

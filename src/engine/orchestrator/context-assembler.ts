@@ -9,6 +9,8 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { AssembledMemory } from "@/types/memory";
 import type { EmotionalState } from "@/types/memory";
+import { buildRelationshipContinuity } from "@/engine/memory/relationship-memory";
+import { buildInitiativeObservation } from "@/engine/memory/initiative-memory";
 
 // ─── Main Assembler ────────────────────────────────────────────────────────
 
@@ -56,10 +58,12 @@ export async function assembleMemory(params: {
   const recentHistoryNarrative = buildRecentHistoryNarrative(interactions);
 
   // ── Layer 3 & 4: Relationship + emotional narrative ────────────────────
-  const relationshipNarrative = relSnapshot?.content ?? "";
+  const progContinuity = buildRelationshipContinuity(interactions, streak);
+  const relationshipNarrative = [relSnapshot?.content, progContinuity].filter(Boolean).join(" ");
 
   // ── Patterns narrative ─────────────────────────────────────────────────
-  const patternsNarrative = buildPatternsNarrative(userId);
+  const progPatterns = buildInitiativeObservation(interactions, identity);
+  const patternsNarrative = progPatterns;
 
   // ── Timing data ────────────────────────────────────────────────────────
   const hoursSinceLastSession = computeHoursSinceLastSession(interactions);
@@ -82,6 +86,10 @@ export async function assembleMemory(params: {
     hoursSinceLastSession,
     lastAction,
     streakStats: streak,
+    recentEmotions: emotional.map((e) => e.emotionalState),
+    recentModes: interactions
+      .map((i) => i.response_mode as import("@/types/companion").ResponseMode)
+      .filter(Boolean),
   };
 }
 
@@ -100,7 +108,7 @@ async function fetchRecentInteractions(userId: string) {
   const { data } = await supabaseAdmin
     .from("interactions")
     .select(
-      "user_text, validate, reframe, action, action_done, persona, created_at, emotional_tag"
+      "user_text, validate, reframe, action, action_done, persona, created_at, emotional_tag, response_mode"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })

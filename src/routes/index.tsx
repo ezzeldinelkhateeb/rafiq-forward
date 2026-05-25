@@ -92,6 +92,12 @@ function Rafiq() {
     refreshStreak();
   }
 
+  async function handleActionDone(msgId: string, actionText: string) {
+    if (!isReady || !userId || !sessionId) return;
+    await markActionDone(msgId, userId);
+    await handleSend(`تمام، عملت ده: ${actionText}`);
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
       {showOnboarding && <Onboarding onDone={finishOnboarding} />}
@@ -174,7 +180,7 @@ function Rafiq() {
             <MessageBubble
               key={m.id}
               msg={m}
-              onAction={() => markActionDone(m.id, userId)}
+              onAction={() => handleActionDone(m.id, m.action || "")}
             />
           ))}
 

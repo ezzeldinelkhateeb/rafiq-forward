@@ -1,38 +1,29 @@
-/**
- * Behavioral State Machine — detects the user's current behavioral state
- * from message signals, time of day, and pattern history.
- *
- * This runs BEFORE the LLM call and selects the response strategy.
- * The LLM never sees the state label — it sees a different prompt.
- */
-
 import type { UserBehaviorState, BehavioralAnalysis } from "@/types/behavioral";
+import type { EmotionalState } from "@/types/memory";
 
 // ─── Signal Keywords ──────────────────────────────────────────────────────
 
 const ESCAPE_SIGNALS = [
   "سوشيال", "موبايل", "يوتيوب", "تيك توك", "نت", "إنترنت",
   "بضيع وقت", "مستنزف", "تعبت من الشاشة", "دومسكرول",
-  "ريلز", "فيسبوك", "أنستا", "فيديو", "ضيعت",
+  "ريلز", "فيسبوك", "أنستا", "فيديو", "ضيعت", "تيكتوك",
 ];
 
 const COLLAPSE_SIGNALS = [
   "تعبت", "مش كويس", "مستنزف", "زهقت", "محتاج", "مش قادر",
   "كل ده", "دماغي زحمة", "مشوش", "مش عارف", "حابب أنام",
-  "ماليش نفس", "ضغط", "مضغوط", "صعب", "مش تمام",
+  "ماليش نفس", "ضغط", "مضغوط", "صعب", "مش تمام", "حزين", "مكتئب",
 ];
 
 const MOMENTUM_SIGNALS = [
   "عملت", "خلصت", "أنجزت", "نجحت", "كملت", "تمام", "حلو",
-  "زبالة", "تحسن", "أحسن", "قدرت", "ركزت", "بدأت",
+  "تحسن", "أحسن", "قدرت", "ركزت", "بدأت", "فقت", "صحيت",
 ];
 
 const SCATTERED_SIGNALS = [
   "مش عارف أبدأ", "كتير", "ورايا حاجات", "مشتت", "مش قادر أركز",
-  "كل حاجة", "أعمل إيه", "من فين أبدأ",
+  "كل حاجة", "أعمل إيه", "من فين أبدأ", "تايه", "مش مركز",
 ];
-
-// ─── State Detection ──────────────────────────────────────────────────────
 
 function countSignals(text: string, signals: string[]): number {
   const lower = text.toLowerCase();
@@ -43,140 +34,165 @@ function isLateNight(hour: number): boolean {
   return hour >= 23 || hour <= 4;
 }
 
-/**
- * Analyzes the current message + context to determine behavioral state.
- * Rule-based — fast, no LLM call needed.
- */
-export function analyzeBehavioralState(params: {
+interface StateMachineParams {
   userMessage: string;
   hourOfDay: number;
   hoursSinceLastSession: number;
-  recentActionDoneRate: number; // 0–1: fraction of recent actions completed
+  recentActionDoneRate: number;
   sessionCount: number;
-}): BehavioralAnalysis {
+  recentEmotions?: EmotionalState[];
+}
+
+/**
+ * State Machine V2 — computes user behavioral state using weighted scoring
+ * and emotional inertia (moving average over recent history).
+ */
+export function analyzeBehavioralState(params: StateMachineParams): BehavioralAnalysis {
   const {
     userMessage,
     hourOfDay,
     hoursSinceLastSession,
     recentActionDoneRate,
     sessionCount,
+    recentEmotions = [],
   } = params;
 
   const lateNight = isLateNight(hourOfDay);
   const signals: string[] = [];
 
+  // 1. Calculate base signal counts
   const escapeCount = countSignals(userMessage, ESCAPE_SIGNALS);
   const collapseCount = countSignals(userMessage, COLLAPSE_SIGNALS);
   const momentumCount = countSignals(userMessage, MOMENTUM_SIGNALS);
   const scatteredCount = countSignals(userMessage, SCATTERED_SIGNALS);
 
-  // ── Determine state with confidence ────────────────────────────────────
+  // 2. Initialize scores for each state
+  const scores: Record<UserBehaviorState, number> = {
+    digital_escape: 0,
+    emotional_collapse: 0,
+    productive_momentum: 0,
+    rebuilding: 0,
+    stuck: 0,
+    present: 0,
+    unknown: 0,
+  };
 
-  // Digital escape: explicit escape keywords OR late-night + low completion
-  if (escapeCount >= 1 || (lateNight && recentActionDoneRate < 0.2)) {
-    if (escapeCount >= 1) signals.push("ذُكرت كلمات الهروب الرقمي");
-    if (lateNight) signals.push("وقت متأخر من الليل");
-    if (recentActionDoneRate < 0.2) signals.push("نسبة إنجاز منخفضة جداً");
-
-    return {
-      state: "digital_escape",
-      confidence: escapeCount >= 2 ? 0.9 : 0.65,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: hoursSinceLastSession > 16,
-    };
+  // 3. Keyword Scoring Weights
+  if (escapeCount > 0) {
+    scores.digital_escape += escapeCount * 3.5;
+    signals.push(`كلمات هروب رقمي (${escapeCount})`);
+  }
+  if (collapseCount > 0) {
+    scores.emotional_collapse += collapseCount * 3.0;
+    signals.push(`كلمات ضائقة عاطفية (${collapseCount})`);
+  }
+  if (momentumCount > 0) {
+    scores.productive_momentum += momentumCount * 3.0;
+    signals.push(`كلمات زخم وإنجاز (${momentumCount})`);
+  }
+  if (scatteredCount > 0) {
+    scores.emotional_collapse += scatteredCount * 2.0; // Scattered feeds emotional collapse
+    signals.push(`كلمات تشتت (${scatteredCount})`);
   }
 
-  // Emotional collapse: multiple distress signals
-  if (collapseCount >= 2 || (collapseCount >= 1 && lateNight)) {
-    signals.push(`${collapseCount} علامة ضائقة عاطفية`);
-    if (lateNight) signals.push("وقت متأخر من الليل");
-
-    return {
-      state: "emotional_collapse",
-      confidence: collapseCount >= 3 ? 0.9 : 0.7,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: hoursSinceLastSession > 16,
-    };
+  // 4. Context Modifier Weights
+  if (lateNight) {
+    scores.digital_escape += 2.0;
+    scores.emotional_collapse += 1.5;
+    signals.push("وقت متأخر من الليل");
   }
 
-  // Productive momentum: positive completion signals
-  if (momentumCount >= 1 && recentActionDoneRate >= 0.5) {
-    signals.push("كلمات إيجابية ونسبة إنجاز عالية");
-
-    return {
-      state: "productive_momentum",
-      confidence: 0.8,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: hoursSinceLastSession > 16,
-    };
+  // Action completion rate modifiers
+  if (recentActionDoneRate >= 0.6) {
+    scores.productive_momentum += 3.0;
+    signals.push(`إنجاز عالي (${Math.round(recentActionDoneRate * 100)}%)`);
+  } else if (recentActionDoneRate < 0.3 && recentActionDoneRate > 0) {
+    scores.stuck += 1.5;
+    scores.digital_escape += 1.0;
+    signals.push(`إنجاز منخفض (${Math.round(recentActionDoneRate * 100)}%)`);
   }
 
-  // Stuck/stagnant: no sessions in 5+ days and low completion
-  if (hoursSinceLastSession > 120 && recentActionDoneRate < 0.3) {
-    signals.push(`${Math.round(hoursSinceLastSession / 24)} أيام بدون تواصل`);
-    signals.push("نسبة إنجاز منخفضة");
-
-    return {
-      state: "stuck",
-      confidence: 0.75,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: true,
-    };
+  // Time absence modifiers
+  if (hoursSinceLastSession > 120) {
+    scores.stuck += 4.0;
+    signals.push("غياب طويل (> 5 أيام)");
+  } else if (hoursSinceLastSession > 48) {
+    if (momentumCount >= 1) {
+      scores.rebuilding += 3.0;
+      signals.push("عودة إيجابية بعد غياب");
+    } else {
+      scores.stuck += 1.5;
+    }
   }
 
-  // Rebuilding: returned after long absence with positive tone
-  if (hoursSinceLastSession > 48 && momentumCount >= 1) {
-    signals.push("عودة بعد غياب مع نبرة إيجابية");
-
-    return {
-      state: "rebuilding",
-      confidence: 0.7,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: true,
-    };
+  // Message length modifiers (very short messages imply stuck or low engagement)
+  if (userMessage.length < 12 && recentActionDoneRate < 0.3) {
+    scores.stuck += 1.5;
+    scores.unknown += 1.0;
   }
 
-  // Scattered: can't focus/start signals
-  if (scatteredCount >= 1) {
-    signals.push("علامات التشتت والتقطع");
+  // 5. Emotional Inertia (Gradual Transition moving average)
+  // Look at last 3 emotions in history to apply inertia bias
+  if (recentEmotions.length > 0) {
+    const recent = recentEmotions.slice(0, 3);
+    let historyDistressCount = 0;
+    let historyMomentumCount = 0;
 
-    return {
-      state: "emotional_collapse", // treat scattered like collapse
-      confidence: 0.6,
-      signals,
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: hoursSinceLastSession > 16,
-    };
+    recent.forEach((emotion) => {
+      if (emotion === "drained" || emotion === "anxious" || emotion === "scattered") {
+        historyDistressCount++;
+      } else if (emotion === "motivated" || emotion === "rebuilding") {
+        historyMomentumCount++;
+      }
+    });
+
+    if (historyDistressCount >= 2) {
+      // Historical bias resists sudden jump to momentum
+      scores.emotional_collapse += 2.0;
+      scores.digital_escape += 1.0;
+      signals.push(`قصور ذاتي عاطفي: تاريخ ضائقة (${historyDistressCount}/3)`);
+    }
+
+    if (historyMomentumCount >= 2) {
+      // Historical bias smooths out single negative word
+      scores.productive_momentum += 2.0;
+      signals.push(`قصور ذاتي عاطفي: تاريخ إيجابي (${historyMomentumCount}/3)`);
+    }
   }
 
-  // First session ever — present and curious
-  if (sessionCount <= 1) {
-    return {
-      state: "present",
-      confidence: 0.5,
-      signals: ["أول تواصل"],
-      hourOfDay,
-      isLateNight: lateNight,
-      isFirstMessageOfDay: true,
-    };
+  // 6. Present / Onboarding fallback
+  if (sessionCount <= 1 && scores.digital_escape < 2 && scores.emotional_collapse < 2) {
+    scores.present += 3.0;
   }
 
-  // Default: unknown — not enough signals
+  // 7. Find highest scoring state
+  let selectedState: UserBehaviorState = "unknown";
+  let maxScore = 0;
+
+  (Object.keys(scores) as UserBehaviorState[]).forEach((state) => {
+    if (scores[state] > maxScore) {
+      maxScore = scores[state];
+      selectedState = state;
+    }
+  });
+
+  // Calculate confidence based on the margin of victory
+  let confidence = 0.5;
+  if (maxScore > 0) {
+    const totalScore = Object.values(scores).reduce((a, b) => a + b, 0);
+    confidence = Math.min(0.95, Math.max(0.4, maxScore / (totalScore || 1) + 0.2));
+  }
+
+  // If no clear signals, default to unknown
+  if (maxScore === 0) {
+    selectedState = "unknown";
+    confidence = 0.3;
+  }
+
   return {
-    state: "unknown",
-    confidence: 0.3,
-    signals: ["لا علامات واضحة"],
+    state: selectedState,
+    confidence,
+    signals,
     hourOfDay,
     isLateNight: lateNight,
     isFirstMessageOfDay: hoursSinceLastSession > 16,

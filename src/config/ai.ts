@@ -46,7 +46,7 @@ export const AI_CONFIG = {
    */
   MAX_TOKENS: {
     /** Companion reply — kept short by design ("Minimum Words") */
-    COMPANION: 300,
+    COMPANION: 1000,
     /** Proactive nudge — very short */
     PROACTIVE: 120,
     /** Classification — just a label */
@@ -54,6 +54,31 @@ export const AI_CONFIG = {
     /** Narrative snapshot — a paragraph or two */
     NARRATIVE: 600,
   },
+
+  /**
+   * Mode-specific temperature settings for all 18 response strategies.
+   * Higher = more creative/varried (e.g. stories). Lower = more consistent (e.g. silence, followups).
+   */
+  COMPANION_TEMPERATURES: {
+    validate_reframe_act: 0.8,
+    question_only: 0.85,
+    observation: 0.8,
+    reconnect: 0.75,
+    celebrate: 0.8,
+    challenge: 0.85,
+    followup: 0.7,
+    silence_breaking: 0.75,
+    playful_observation: 0.95,
+    deep_reflection: 0.7,
+    interruption_pattern: 0.85,
+    late_night_softness: 0.6,
+    momentum_push: 0.85,
+    relapse_detection: 0.7,
+    emotional_mirroring: 0.75,
+    micro_story: 1.0,
+    tough_love: 0.9,
+    quiet_presence: 0.5,
+  } as Record<import("@/types/companion").ResponseMode, number>,
 
   /**
    * Google AI Studio REST endpoint (used as fallback or for direct calls).

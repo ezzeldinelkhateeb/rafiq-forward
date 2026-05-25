@@ -97,4 +97,8 @@ export interface AssembledMemory {
   lastAction?: { text: string; done: boolean; daysAgo: number };
   /** Raw user count data for streak display */
   streakStats: { done: number; total: number };
+  /** Recent emotional history array for trend analysis */
+  recentEmotions: EmotionalState[];
+  /** Recent response modes history to avoid repetition */
+  recentModes: import("./companion").ResponseMode[];
 }
