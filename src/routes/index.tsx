@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Send, Sparkles, Check, Flame } from "lucide-react";
+import { Send, Sparkles, Check, Flame, RefreshCw } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
 import { Onboarding } from "@/components/Onboarding";
@@ -32,7 +32,7 @@ const ONBOARDED_KEY = "rafiq.onboarded";
 
 function Rafiq() {
   const { userId, sessionId, persona, isReady, setPersona } = useSession();
-  const { messages, thinking, error, send, markActionDone, clearError } = useRafiqChat();
+  const { messages, thinking, error, send, confirmAction, swapAlternative, clearError } = useRafiqChat();
   const { nudge, dismiss: dismissNudge } = useProactive(userId, isReady);
   const { streak, refresh: refreshStreak } = useStreak(userId, isReady);
 
@@ -165,16 +165,33 @@ function Rafiq() {
           )}
 
           {messages.length === 0 && !thinking && !nudge && (
-            <p className="text-center text-ivory/30 text-sm pt-4 font-arabic">
-              فضفض معايا بكلمتين أو اختار حاجة من دول ونبدأ سوا…
-            </p>
+            <div
+              className="mx-auto max-w-xl animate-fade-up rounded-2xl px-5 py-4"
+              dir="rtl"
+              style={{
+                background:
+                  "linear-gradient(135deg, rgba(230,195,142,0.08), rgba(125,143,106,0.05))",
+                border: "1px solid rgba(230,195,142,0.18)",
+              }}
+            >
+              <p className="text-[10px] font-arabic tracking-widest mb-2" style={{ color: "#E6C38E", opacity: 0.6 }}>
+                رفيق
+              </p>
+              <p className="font-arabic text-[15px] leading-relaxed" style={{ color: "#F4F4F0" }}>
+                أنا جنبك. لو دماغك زحمة، يلا نرتبها سوا — خطوة صغيرة بخطوة صغيرة.
+              </p>
+              <p className="font-arabic text-[12px] mt-1.5" style={{ color: "rgba(244,244,240,0.4)" }}>
+                ابدأ بكلمة بسيطة أو اختار من تحت.
+              </p>
+            </div>
           )}
 
           {messages.map((m) => (
             <MessageBubble
               key={m.id}
               msg={m}
-              onAction={() => markActionDone(m.id, userId)}
+              onConfirm={() => confirmAction(m.id, userId, sessionId, persona)}
+              onAlternative={() => swapAlternative(m.id, userId, persona)}
             />
           ))}
 
@@ -241,7 +258,8 @@ function Rafiq() {
 
 function MessageBubble({
   msg,
-  onAction,
+  onConfirm,
+  onAlternative,
 }: {
   msg: {
     id: string;
@@ -250,8 +268,10 @@ function MessageBubble({
     reframe?: string;
     action?: string;
     actionDone?: boolean;
+    alternativeTried?: boolean;
   };
-  onAction: () => void;
+  onConfirm: () => void;
+  onAlternative: () => void;
 }) {
   if (msg.role === "user") {
     return (
@@ -282,21 +302,34 @@ function MessageBubble({
       </div>
 
       {msg.action && (
-        <button
-          onClick={onAction}
-          disabled={msg.actionDone}
-          className="ml-1 group inline-flex items-center gap-2 px-4 py-2.5 rounded-full font-arabic text-sm transition-all"
-          style={{
-            background: msg.actionDone
-              ? "rgba(125,143,106,0.15)"
-              : "linear-gradient(135deg, rgba(230,195,142,0.18), rgba(230,195,142,0.08))",
-            border: `1px solid ${msg.actionDone ? "rgba(125,143,106,0.4)" : "rgba(230,195,142,0.45)"}`,
-            color: msg.actionDone ? "#7D8F6A" : "#E6C38E",
-          }}
-        >
-          {msg.actionDone ? <Check className="w-4 h-4" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {msg.actionDone ? "تمام، عملتها ✓" : msg.action}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap ml-1">
+          <button
+            onClick={onConfirm}
+            disabled={msg.actionDone}
+            className="group inline-flex items-center gap-2 px-4 py-2.5 rounded-full font-arabic text-sm transition-all"
+            style={{
+              background: msg.actionDone
+                ? "rgba(125,143,106,0.15)"
+                : "linear-gradient(135deg, rgba(230,195,142,0.18), rgba(230,195,142,0.08))",
+              border: `1px solid ${msg.actionDone ? "rgba(125,143,106,0.4)" : "rgba(230,195,142,0.45)"}`,
+              color: msg.actionDone ? "#7D8F6A" : "#E6C38E",
+            }}
+          >
+            {msg.actionDone ? <Check className="w-4 h-4" /> : <Sparkles className="w-3.5 h-3.5" />}
+            {msg.actionDone ? "تمام، عملتها ✓" : msg.action}
+          </button>
+
+          {!msg.actionDone && !msg.alternativeTried && (
+            <button
+              onClick={onAlternative}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-arabic text-[12px] transition-all text-ivory/55 hover:text-ivory/85 border border-ivory/10 hover:border-ivory/25 bg-ivory/[0.02]"
+              title="مش قادر دلوقتي؟ هاتلي حل تاني"
+            >
+              <RefreshCw className="w-3 h-3" />
+              مش قادر · هاتلي حل تاني
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
