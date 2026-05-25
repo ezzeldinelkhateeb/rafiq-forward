@@ -76,6 +76,14 @@ OUTPUT: JSON فقط بدون markdown:
       temperature: AI_CONFIG.TEMPERATURE.COMPANION,
       maxOutputTokens: 200,
       expectJson: true,
+      responseSchema: {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+          action: { type: "string" },
+        },
+        required: ["validate", "action"],
+      },
     });
 
     const validate =
@@ -152,6 +160,13 @@ OUTPUT: JSON فقط: {"action":"..."}
       temperature: 0.9,
       maxOutputTokens: 80,
       expectJson: true,
+      responseSchema: {
+        type: "object",
+        properties: {
+          action: { type: "string" },
+        },
+        required: ["action"],
+      },
     });
 
     const action =
