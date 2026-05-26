@@ -162,7 +162,11 @@ export const regenerateAlternative = createServerFn({ method: "POST" })
       .from("interactions")
       .select("user_text, action")
       .eq("id", data.interactionId)
+      .eq("user_id", data.userId)
       .single();
+    if (!original) {
+      throw new Error("Interaction not found or access denied");
+    }
 
     const voice = PERSONA_VOICES[data.persona];
 
