@@ -35,7 +35,11 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
       .from("interactions")
       .select("user_text, validate, reframe, action, persona")
       .eq("id", data.interactionId)
+      .eq("user_id", data.userId)
       .single();
+    if (!original) {
+      throw new Error("Interaction not found or access denied");
+    }
 
     // 2. Mark done
     await supabaseAdmin
