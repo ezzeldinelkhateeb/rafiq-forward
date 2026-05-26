@@ -11,7 +11,6 @@
 
 import { useState, useRef, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { generateRafiqReply } from "@/functions/chat.fn";
 import {
   confirmAndContinue,
   regenerateAlternative,
@@ -46,7 +45,6 @@ export interface RafiqChatState {
 }
 
 export function useRafiqChat(): RafiqChatState {
-  const callGenerateReply = useServerFn(generateRafiqReply);
   const callConfirm = useServerFn(confirmAndContinue);
   const callAlternative = useServerFn(regenerateAlternative);
 
@@ -76,50 +74,108 @@ export function useRafiqChat(): RafiqChatState {
       setMessages((m) => [...m, userMsg]);
       setThinking(true);
 
-      const start = Date.now();
-      let reply: RafiqReply;
+      const rafiqMsgId = crypto.randomUUID();
+      const placeholderMsg: ChatMessage = {
+        id: rafiqMsgId,
+        role: "rafiq",
+        text: "",
+        actionDone: false,
+      };
+      setMessages((m) => [...m, placeholderMsg]);
+
       try {
-        reply = await callGenerateReply({
-          data: {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             userId,
             sessionId,
             userText: trimmed,
             persona,
             recentMessageCount: messages.filter((m) => m.role === "user").length,
             consecutiveAdviceCount: consecutiveAdviceCountRef.current,
-          },
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error("فشل الاتصال بـ رفيق. حاول تاني.");
+        }
+
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("عطل في نظام البث المباشر.");
+        }
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let isThinkingCleared = false;
+        let finalMetadata: any = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          buffer += chunk;
+
+          // Parse metadata if present at the end
+          let metadata: any = null;
+          let cleanBuffer = buffer;
+          if (buffer.includes("__METADATA__")) {
+            const parts = buffer.split("__METADATA__");
+            cleanBuffer = parts[0];
+            try {
+              metadata = JSON.parse(parts[1]);
+              finalMetadata = metadata;
+            } catch {}
+          }
+
+          // Parse partial JSON stream
+          const parsed = parsePartialJson(cleanBuffer);
+
+          if (parsed.validate && !isThinkingCleared) {
+            setThinking(false);
+            isThinkingCleared = true;
+          }
+
+          // Update message state in real-time
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === rafiqMsgId
+                ? {
+                    ...m,
+                    text: parsed.validate || cleanBuffer.slice(0, 150),
+                    reframe: parsed.reframe || undefined,
+                    action: parsed.action || undefined,
+                    mode: metadata?.mode || m.mode,
+                    emotionalTag: metadata?.emotionalTag || m.emotionalTag,
+                    id: metadata?.id || rafiqMsgId,
+                  }
+                : m
+            )
+          );
+        }
+
+        // Final check on advice count for pacing
+        setMessages((prev) => {
+          const finalMsg = prev.find((m) => m.id === rafiqMsgId || (finalMetadata && m.id === finalMetadata.id));
+          const modeUsed = finalMsg?.mode;
+          if (modeUsed === "validate_reframe_act") {
+            consecutiveAdviceCountRef.current += 1;
+          } else {
+            consecutiveAdviceCountRef.current = 0;
+          }
+          return prev;
         });
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "حصل خطأ غير متوقع.");
+        // Remove the empty placeholder if request failed completely
+        setMessages((m) => m.filter((msg) => msg.id !== rafiqMsgId));
+      } finally {
         setThinking(false);
-        return;
       }
-
-      const elapsed = Date.now() - start;
-      if (elapsed < 1800) await new Promise((r) => setTimeout(r, 1800 - elapsed));
-
-      if (reply.mode === "validate_reframe_act") {
-        consecutiveAdviceCountRef.current += 1;
-      } else {
-        consecutiveAdviceCountRef.current = 0;
-      }
-
-      setMessages((m) => [
-        ...m,
-        {
-          id: reply.id,
-          role: "rafiq",
-          text: reply.text,
-          reframe: reply.reframe,
-          action: reply.action,
-          actionDone: false,
-          mode: reply.mode,
-          emotionalTag: reply.emotionalTag,
-        },
-      ]);
-      setThinking(false);
     },
-    [thinking, messages, callGenerateReply]
+    [thinking, messages]
   );
 
   const confirmAction = useCallback(
@@ -186,4 +242,53 @@ export function useRafiqChat(): RafiqChatState {
     swapAlternative,
     clearError,
   };
+}
+
+// ─── Partial JSON Streaming Parser ──────────────────────────────────────────
+
+function parsePartialJson(streamText: string) {
+  let validate = "";
+  let reframe = "";
+  let action = "";
+
+  const trimmed = streamText.trim();
+
+  // If not a JSON response, fallback to treating raw text as validation content
+  if (!trimmed.startsWith("{") && !trimmed.includes('"validate"')) {
+    return { validate: trimmed, reframe: "", action: "" };
+  }
+
+  // Extract validate field
+  const valClosed = trimmed.match(/"validate"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+  if (valClosed) {
+    validate = valClosed[1];
+  } else {
+    const valOpen = trimmed.match(/"validate"\s*:\s*"([^"]*)$/);
+    if (valOpen) validate = valOpen[1];
+  }
+
+  // Extract reframe field
+  const refClosed = trimmed.match(/"reframe"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+  if (refClosed) {
+    reframe = refClosed[1];
+  } else {
+    const refOpen = trimmed.match(/"reframe"\s*:\s*"([^"]*)$/);
+    if (refOpen) reframe = refOpen[1];
+  }
+
+  // Extract action field
+  const actClosed = trimmed.match(/"action"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+  if (actClosed) {
+    action = actClosed[1];
+  } else {
+    const actOpen = trimmed.match(/"action"\s*:\s*"([^"]*)$/);
+    if (actOpen) action = actOpen[1];
+  }
+
+  // Clean escape characters
+  validate = validate.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  reframe = reframe.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  action = action.replace(/\\n/g, "\n").replace(/\\"/g, '"');
+
+  return { validate, reframe, action };
 }

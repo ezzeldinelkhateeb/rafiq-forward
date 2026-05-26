@@ -45,6 +45,25 @@ export function selectBestModeByRhythm(
     }
   }
 
+  // Rule 2.5: Pacing streak breaking. If the last 3 modes are all in the same pacing category, force a change.
+  if (history.length >= 3) {
+    const lastThree = history.slice(0, 3);
+    const allLong = lastThree.every((m) => LONG_TEXT_MODES.includes(m));
+    const allShort = lastThree.every((m) => SHORT_INTERACTIVE_MODES.includes(m));
+
+    if (allLong) {
+      const shortCandidates = filtered.filter((m) => SHORT_INTERACTIVE_MODES.includes(m));
+      if (shortCandidates.length > 0) {
+        filtered = shortCandidates;
+      }
+    } else if (allShort) {
+      const longCandidates = filtered.filter((m) => LONG_TEXT_MODES.includes(m));
+      if (longCandidates.length > 0) {
+        filtered = longCandidates;
+      }
+    }
+  }
+
   // Rule 3: Rotate pacing. If the last mode was long/heavy, prefer a short/interactive mode
   if (history.length > 0 && LONG_TEXT_MODES.includes(history[0])) {
     const shortCandidates = filtered.filter((m) =>

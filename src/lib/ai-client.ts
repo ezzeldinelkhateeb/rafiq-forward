@@ -9,6 +9,78 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { AI_CONFIG } from "@/config/ai";
+import type { ResponseMode } from "@/types/companion";
+
+// ─── Default JSON Schemas Per Mode ─────────────────────────────────────────
+
+export function getSchemaForMode(mode: ResponseMode): Record<string, any> {
+  switch (mode) {
+    case "validate_reframe_act":
+      return {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+          reframe: { type: "string" },
+          action: { type: "string" },
+        },
+        required: ["validate", "reframe", "action"],
+      };
+
+    case "deep_reflection":
+    case "micro_story":
+      return {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+          reframe: { type: "string" },
+        },
+        required: ["validate", "reframe"],
+      };
+
+    case "challenge":
+    case "interruption_pattern":
+    case "momentum_push":
+    case "celebrate":
+      return {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+          action: { type: "string" },
+        },
+        required: ["validate", "action"],
+      };
+
+    case "late_night_softness":
+    case "relapse_detection":
+    case "tough_love":
+      return {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+          reframe: { type: "string" },
+          action: { type: "string" },
+        },
+        required: ["validate", "reframe", "action"],
+      };
+
+    case "question_only":
+    case "observation":
+    case "reconnect":
+    case "followup":
+    case "silence_breaking":
+    case "playful_observation":
+    case "emotional_mirroring":
+    case "quiet_presence":
+    default:
+      return {
+        type: "object",
+        properties: {
+          validate: { type: "string" },
+        },
+        required: ["validate"],
+      };
+  }
+}
 
 // ─── Client Singleton ────────────────────────────────────────────────────
 
@@ -195,6 +267,57 @@ export async function callGeminiNarrative(params: {
     maxOutputTokens: AI_CONFIG.MAX_TOKENS.NARRATIVE,
   });
   return result.text.trim();
+}
+
+export interface GeminiStreamParams {
+  model?: string;
+  systemInstruction: string;
+  userMessage: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+  responseSchema?: Record<string, any>;
+}
+
+/**
+ * Streams content from Gemini, returns SDK generation stream.
+ */
+export async function callGeminiStream(
+  params: GeminiStreamParams
+): Promise<any> {
+  const client = getClient();
+
+  const model = params.model ?? AI_CONFIG.PRIMARY_MODEL;
+  const temperature = params.temperature ?? AI_CONFIG.TEMPERATURE.COMPANION;
+  const maxOutputTokens =
+    params.maxOutputTokens ?? AI_CONFIG.MAX_TOKENS.COMPANION;
+
+  try {
+    return await client.models.generateContentStream({
+      model,
+      contents: params.userMessage,
+      config: {
+        systemInstruction: params.systemInstruction,
+        temperature,
+        maxOutputTokens,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
+        responseMimeType: "application/json",
+        responseSchema: params.responseSchema,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message.toLowerCase() : String(err);
+    if (message.includes("429") || message.includes("quota")) {
+      throw new Error("الطلبات كتيرة دلوقتي، استنى لحظة وحاول تاني.");
+    }
+    if (message.includes("api_key") || message.includes("unauthorized")) {
+      throw new Error("مفتاح API غلط أو منتهي — راجع الإعدادات.");
+    }
+    throw new Error(
+      err instanceof Error ? err.message : "حصل خطأ غير متوقع في الـ AI."
+    );
+  }
 }
 
 /**

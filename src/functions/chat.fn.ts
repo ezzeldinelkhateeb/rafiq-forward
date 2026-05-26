@@ -13,7 +13,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { callGemini } from "@/lib/ai-client";
+import { callGemini, getSchemaForMode } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
 import { assembleMemory } from "@/engine/orchestrator/context-assembler";
 import { selectResponseMode } from "@/engine/orchestrator/response-strategy";
@@ -101,6 +101,7 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       temperature: AI_CONFIG.COMPANION_TEMPERATURES[mode] ?? AI_CONFIG.TEMPERATURE.COMPANION,
       maxOutputTokens: AI_CONFIG.MAX_TOKENS.COMPANION,
       expectJson: true,
+      responseSchema: getSchemaForMode(mode),
     });
 
     // ── Step 6: Parse response ───────────────────────────────────────────

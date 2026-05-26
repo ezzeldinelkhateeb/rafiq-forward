@@ -10,21 +10,21 @@
 export const AI_CONFIG = {
   /**
    * Primary model for all Rafiq companion responses.
-   * gemini-3.5-flash: fast, cost-effective, excellent for Arabic conversation.
+   * gemini-3-flash-preview: fast, cost-effective, excellent for Arabic conversation.
    */
-  PRIMARY_MODEL: "gemini-3.5-flash",
+  PRIMARY_MODEL: "gemini-3-flash-preview",
 
   /**
    * Model for lightweight classification tasks (emotional state, pattern tags).
    * Same model — small prompts stay cheap. Swap to a local model in Phase 3.
    */
-  CLASSIFIER_MODEL: "gemini-3.5-flash",
+  CLASSIFIER_MODEL: "gemini-3-flash-preview",
 
   /**
    * Model for generating narrative memory snapshots.
    * These run infrequently (weekly) and need higher coherence.
    */
-  NARRATIVE_MODEL: "gemini-3.5-flash",
+  NARRATIVE_MODEL: "gemini-3-flash-preview",
 
   /**
    * Temperature settings per use case.
