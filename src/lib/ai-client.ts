@@ -65,6 +65,9 @@ export async function callGemini(
         systemInstruction: params.systemInstruction,
         temperature,
         maxOutputTokens,
+        thinkingConfig: {
+          thinkingBudget: 0,
+        },
         ...(params.expectJson
           ? {
               responseMimeType: "application/json",
