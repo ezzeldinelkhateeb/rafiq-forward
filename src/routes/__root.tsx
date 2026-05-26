@@ -68,22 +68,30 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
+  head: () => {
+    const title = "رفيق — رفيقك الذكي لتنظيم حياتك وبناء عاداتك";
+    const description =
+      "رفيق مساعدك الذكي بالعامية المصرية يساعدك ترتب دماغك، تتغلب على التشتت، وتبني عاداتك خطوة بخطوة بشكل مستدام.";
+    const ogImage =
+      "https://storage.googleapis.com/gpt-engineer-file-uploads/ceyc76latEdtavamZ7gSHiVC2Lf1/social-images/social-1779551515322-B3BF47E4-20F9-4CC3-8518-99BE508709E7.webp";
+    return {
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "رفيق — Rafiq" },
-      { name: "description", content: "رفيق — يأخذ بيدك لتكون أفضل نسخة من نفسك" },
+      { title },
+      { name: "description", content: description },
       { name: "author", content: "Rafiq" },
-      { property: "og:title", content: "رفيق — Rafiq" },
-      { property: "og:description", content: "رفيق — يأخذ بيدك لتكون أفضل نسخة من نفسك" },
+      { property: "og:title", content: title },
+      { property: "og:description", content: description },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
+      { property: "og:site_name", content: "رفيق" },
+      { property: "og:url", content: "https://rafiq-forward.lovable.app/" },
+      { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:site", content: "@Lovable" },
-      { name: "twitter:title", content: "رفيق — Rafiq" },
-      { name: "twitter:description", content: "رفيق — يأخذ بيدك لتكون أفضل نسخة من نفسك" },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/ceyc76latEdtavamZ7gSHiVC2Lf1/social-images/social-1779551515322-B3BF47E4-20F9-4CC3-8518-99BE508709E7.webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/ceyc76latEdtavamZ7gSHiVC2Lf1/social-images/social-1779551515322-B3BF47E4-20F9-4CC3-8518-99BE508709E7.webp" },
+      { name: "twitter:title", content: title },
+      { name: "twitter:description", content: description },
+      { property: "og:image", content: ogImage },
+      { name: "twitter:image", content: ogImage },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -94,7 +102,31 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap",
       },
     ],
-  }),
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              name: "رفيق",
+              alternateName: "Rafiq",
+              url: "https://rafiq-forward.lovable.app/",
+              logo: "https://rafiq-forward.lovable.app/favicon.ico",
+            },
+            {
+              "@type": "WebSite",
+              name: "رفيق",
+              url: "https://rafiq-forward.lovable.app/",
+              inLanguage: "ar",
+            },
+          ],
+        }),
+      },
+    ],
+    };
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,

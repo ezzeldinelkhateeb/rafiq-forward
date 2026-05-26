@@ -616,6 +616,7 @@ export function DashboardDrawer({
                     />
                     <button
                       onClick={handleAddReward}
+                      aria-label="إضافة مكافأة جديدة"
                       className="px-3 rounded-xl bg-[#E6C38E] text-[#121212] hover:bg-[#d4ad6e] transition-all text-xs font-bold flex items-center justify-center"
                     >
                       <Plus className="w-4 h-4" />
@@ -755,6 +756,7 @@ export function DashboardDrawer({
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => handleToggleHabit(h.id)}
+                              aria-label={done ? `إلغاء إتمام عادة ${h.name}` : `تأكيد إتمام عادة ${h.name} اليوم`}
                               className={`w-6 h-6 rounded-full border flex items-center justify-center transition-all cursor-pointer ${
                                 done
                                   ? "bg-[#7D8F6A] border-[#7D8F6A] text-[#121212]"
@@ -788,6 +790,7 @@ export function DashboardDrawer({
                             {/* Trash button */}
                             <button
                               onClick={() => handleDeleteHabit(h.id)}
+                              aria-label={`حذف عادة ${h.name}`}
                               className="text-ivory/30 hover:text-red-400 transition-all p-1"
                               title="احذف العادة"
                             >

@@ -111,7 +111,7 @@ export function BreathingOrb({ thinking, mood: propMood }: Props) {
         {/* Center Logo - beautifully nested inside the glowing orb */}
         <img
           src={logoUrl}
-          alt="Rafiq"
+          alt="رفيق — شعار التطبيق"
           className="w-14 h-14 object-contain opacity-85 select-none pointer-events-none drop-shadow-[0_2px_10px_rgba(0,0,0,0.6)] mix-blend-luminosity filter transition-transform duration-500 group-hover:scale-105"
         />
       </div>
