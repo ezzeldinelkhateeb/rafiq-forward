@@ -11,7 +11,14 @@ import { useRafiqChat } from "@/hooks/useRafiqChat";
 import { useProactive } from "@/hooks/useProactive";
 import { useStreak } from "@/hooks/useStreak";
 
-export const Route = createFileRoute("/")({ component: Rafiq });
+export const Route = createFileRoute("/")({
+  component: Rafiq,
+  head: () => ({
+    links: [
+      { rel: "canonical", href: "https://rafiq-forward.lovable.app/" },
+    ],
+  }),
+});
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -123,12 +130,17 @@ function Rafiq() {
           <span className="text-ivory/25">/</span>
           <span className="text-ivory/40">{streak.total}</span>
         </button>
+        <h1 className="sr-only">رفيق — مساعدك الذكي للتخلص من التشتت وبناء العادات بالعامية المصرية</h1>
         <img
           src={logoUrl}
-          alt="رفيق"
+          alt="رفيق — شعار التطبيق"
+          width={48}
+          height={48}
+          fetchPriority="high"
           className="h-12 w-auto opacity-30"
           style={{ filter: "brightness(1.4) sepia(0.05)" }}
         />
+
         <div className="w-12" />
       </header>
 

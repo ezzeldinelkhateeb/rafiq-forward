@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rafiq-forward.lovable.app/sitemap.xml

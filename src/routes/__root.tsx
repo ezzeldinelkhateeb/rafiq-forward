@@ -102,7 +102,31 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap",
       },
     ],
-  }),
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              name: "رفيق",
+              alternateName: "Rafiq",
+              url: "https://rafiq-forward.lovable.app/",
+              logo: "https://rafiq-forward.lovable.app/favicon.ico",
+            },
+            {
+              "@type": "WebSite",
+              name: "رفيق",
+              url: "https://rafiq-forward.lovable.app/",
+              inLanguage: "ar",
+            },
+          ],
+        }),
+      },
+    ],
+    };
+  },
   shellComponent: RootShell,
   component: RootComponent,
   notFoundComponent: NotFoundComponent,
