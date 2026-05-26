@@ -101,7 +101,7 @@ OUTPUT: JSON فقط بدون markdown:
       systemInstruction,
       userMessage: userPrompt,
       temperature: AI_CONFIG.TEMPERATURE.COMPANION,
-      maxOutputTokens: 1000,
+      maxOutputTokens: 4000,
       expectJson: true,
       responseSchema: {
         type: "object",
@@ -185,7 +185,7 @@ OUTPUT: JSON فقط: {"action":"..."}
       systemInstruction,
       userMessage: userPrompt,
       temperature: 0.9,
-      maxOutputTokens: 800,
+      maxOutputTokens: 2000,
       expectJson: true,
       responseSchema: {
         type: "object",

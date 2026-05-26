@@ -102,7 +102,19 @@ export async function callGemini(
             return { text: raw, json: parsed };
           } catch {
             console.error("[ai-client] Robust JSON extraction failed to parse:", jsonCandidate);
+            const truncatedParsed = tryParseTruncatedJson(raw);
+            if (truncatedParsed) {
+              console.log("[ai-client] Recovered truncated JSON content successfully:", truncatedParsed);
+              return { text: raw, json: truncatedParsed };
+            }
           }
+        }
+      } else if (firstBrace !== -1) {
+        // We have an opening brace but no closing brace (truncated response)
+        const truncatedParsed = tryParseTruncatedJson(raw);
+        if (truncatedParsed) {
+          console.log("[ai-client] Recovered truncated JSON from open brace successfully:", truncatedParsed);
+          return { text: raw, json: truncatedParsed };
         }
       }
       
@@ -114,6 +126,10 @@ export async function callGemini(
       try {
         return { text: raw, json: JSON.parse(cleaned) };
       } catch {
+        const truncatedParsed = tryParseTruncatedJson(raw);
+        if (truncatedParsed) {
+          return { text: raw, json: truncatedParsed };
+        }
         return { text: raw, json: undefined };
       }
     }
@@ -176,4 +192,38 @@ export async function callGeminiNarrative(params: {
     maxOutputTokens: AI_CONFIG.MAX_TOKENS.NARRATIVE,
   });
   return result.text.trim();
+}
+
+/**
+ * Tries to extract json key-value pairs using regular expressions when the JSON is truncated or incomplete.
+ * This is very common when LLMs run out of output token budget.
+ */
+function tryParseTruncatedJson(rawText: string): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  
+  // Extract "validate" field
+  const validateMatch = rawText.match(/"validate"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/) 
+                     || rawText.match(/"validate"\s*:\s*"([^"]*)$/);
+  if (validateMatch) {
+    result.validate = validateMatch[1];
+  }
+  
+  // Extract "reframe" field
+  const reframeMatch = rawText.match(/"reframe"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/)
+                    || rawText.match(/"reframe"\s*:\s*"([^"]*)$/);
+  if (reframeMatch) {
+    result.reframe = reframeMatch[1];
+  }
+  
+  // Extract "action" field
+  const actionMatch = rawText.match(/"action"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/)
+                   || rawText.match(/"action"\s*:\s*"([^"]*)$/);
+  if (actionMatch) {
+    result.action = actionMatch[1];
+  }
+  
+  if (result.validate || result.reframe || result.action) {
+    return result;
+  }
+  return undefined;
 }

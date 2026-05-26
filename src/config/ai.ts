@@ -46,13 +46,13 @@ export const AI_CONFIG = {
    */
   MAX_TOKENS: {
     /** Companion reply — kept short by design ("Minimum Words") */
-    COMPANION: 1500,
+    COMPANION: 4000,
     /** Proactive nudge — very short */
     PROACTIVE: 120,
     /** Classification — just a label */
     CLASSIFY: 50,
     /** Narrative snapshot — a paragraph or two */
-    NARRATIVE: 600,
+    NARRATIVE: 1500,
   },
 
   /**

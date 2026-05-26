@@ -176,11 +176,30 @@ function parseReply(
     };
   }
 
-  // Fallback: LLM returned non-JSON
+  // Fallback: LLM returned non-JSON or parsing failed completely.
+  // Clean rawText from any accidental JSON leftovers (e.g. {"validate":...)
+  let cleanText = rawText.trim();
+  if (cleanText.startsWith("{") || cleanText.includes('"validate"')) {
+    // Try to extract the validate text via regex
+    const match = cleanText.match(/"validate"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/)
+               || cleanText.match(/"validate"\s*:\s*"([^"]*)$/);
+    if (match) {
+      cleanText = match[1];
+    } else {
+      // Just strip braces, quotes, and JSON keys to make it readable
+      cleanText = cleanText
+        .replace(/\{?\s*"validate"\s*:\s*"/g, "")
+        .replace(/"\s*,\s*"reframe".*/g, "")
+        .replace(/"\s*,\s*"action".*/g, "")
+        .replace(/["{}]/g, "")
+        .trim();
+    }
+  }
+
   return {
     id,
     mode,
-    text: rawText.slice(0, 200).trim() || "خد نَفَس عميق 🌬",
+    text: cleanText.slice(0, 300).trim() || "خد نَفَس عميق 🌬",
     reframe: undefined,
     action: mode === "validate_reframe_act" ? "خد نَفَس عميق ٣ مرات" : undefined,
   };
