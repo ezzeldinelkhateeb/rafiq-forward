@@ -32,9 +32,9 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }): Promise<RafiqReply> => {
     // 1. Fetch original interaction
-    const { data: original } = await supabaseAdmin
-      .from("interactions")
-      .select("user_text, validate, reframe, action, persona")
+    const { data: original } = await selectFrom("interactions", [
+      "user_text", "validate", "reframe", "action", "persona",
+    ] as const)
       .eq("id", data.interactionId)
       .eq("user_id", data.userId)
       .single();
