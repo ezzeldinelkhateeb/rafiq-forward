@@ -80,6 +80,95 @@ export type Database = {
         }
         Relationships: []
       }
+      focus_sessions: {
+        Row: {
+          completed_at: string
+          duration_minutes: number
+          focus_topic: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          duration_minutes: number
+          focus_topic?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          duration_minutes?: number
+          focus_topic?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      habit_logs: {
+        Row: {
+          completed_at: string
+          habit_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          habit_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          habit_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_logs_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          created_at: string
+          current_streak: number
+          description: string | null
+          frequency: string
+          id: string
+          last_completed_at: string | null
+          max_streak: number
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          description?: string | null
+          frequency?: string
+          id?: string
+          last_completed_at?: string | null
+          max_streak?: number
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          description?: string | null
+          frequency?: string
+          id?: string
+          last_completed_at?: string | null
+          max_streak?: number
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       identity_memory: {
         Row: {
           created_at: string
