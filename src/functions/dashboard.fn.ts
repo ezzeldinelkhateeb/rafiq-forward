@@ -6,6 +6,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { selectFrom } from "@/integrations/supabase/typed-select";
 
 export interface DashboardData {
   identity: {
