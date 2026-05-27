@@ -53,9 +53,9 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
       .eq("user_id", data.userId);
 
     // 3. Fetch user's identity memory (goals, struggles) to make planning specific
-    const { data: identity } = await supabaseAdmin
-      .from("identity_memory")
-      .select("goals, struggles, personality")
+    const { data: identity } = await selectFrom("identity_memory", [
+      "goals", "struggles", "personality",
+    ] as const)
       .eq("user_id", data.userId)
       .single();
 
