@@ -158,9 +158,9 @@ export const regenerateAlternative = createServerFn({ method: "POST" })
     }) => input
   )
   .handler(async ({ data }): Promise<{ action: string }> => {
-    const { data: original } = await supabaseAdmin
-      .from("interactions")
-      .select("user_text, action")
+    const { data: original } = await selectFrom("interactions", [
+      "user_text", "action",
+    ] as const)
       .eq("id", data.interactionId)
       .eq("user_id", data.userId)
       .single();
