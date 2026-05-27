@@ -9,6 +9,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { selectFrom } from "@/integrations/supabase/typed-select";
 import { callGemini } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
 import {
