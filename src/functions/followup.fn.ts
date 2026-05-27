@@ -68,8 +68,7 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
         intensity: 7,
         source_text: `[نفّذ الأكشن: ${original?.action ?? ""}]`,
       })
-      .then(() => {})
-      .catch(() => {});
+      .then(() => {}, () => {});
 
     const voice = PERSONA_VOICES[data.persona];
 

@@ -186,8 +186,7 @@ export const logHabitCompletion = createServerFn({ method: "POST" })
         intensity: 8,
         source_text: `[أنجز عادة: ${habit.name}]`,
       })
-      .then(() => {})
-      .catch(() => {});
+      .then(() => {}, () => {});
 
     return { success: true, current_streak: newStreak };
   });
@@ -222,8 +221,7 @@ export const logFocusSession = createServerFn({ method: "POST" })
         intensity: 9,
         source_text: `[جلسة تركيز ${durationMinutes} دقيقة: ${focusTopic}]`,
       })
-      .then(() => {})
-      .catch(() => {});
+      .then(() => {}, () => {});
 
     return session;
   });

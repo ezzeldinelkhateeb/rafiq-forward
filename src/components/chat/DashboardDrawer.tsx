@@ -280,13 +280,14 @@ export function DashboardDrawer({
           { habit_id: habitId, completed_at: new Date().toISOString() },
           ...prev,
         ]);
+        const newStreak = res.current_streak ?? 1;
         setHabits((prev) =>
           prev.map((h) =>
             h.id === habitId
               ? {
                   ...h,
-                  current_streak: res.current_streak,
-                  max_streak: Math.max(h.max_streak, res.current_streak),
+                  current_streak: newStreak,
+                  max_streak: Math.max(h.max_streak, newStreak),
                   last_completed_at: new Date().toISOString(),
                 }
               : h

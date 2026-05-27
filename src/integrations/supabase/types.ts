@@ -14,6 +14,203 @@ export type Database = {
   }
   public: {
     Tables: {
+      behavioral_patterns: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          description: string
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          occurrence_count: number
+          pattern_type: string
+          user_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          description: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          occurrence_count?: number
+          pattern_type: string
+          user_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          description?: string
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          occurrence_count?: number
+          pattern_type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      emotional_timeline: {
+        Row: {
+          created_at: string
+          emotional_state: string
+          id: string
+          intensity: number | null
+          session_id: string | null
+          source_text: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emotional_state: string
+          id?: string
+          intensity?: number | null
+          session_id?: string | null
+          source_text?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emotional_state?: string
+          id?: string
+          intensity?: number | null
+          session_id?: string | null
+          source_text?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      focus_sessions: {
+        Row: {
+          completed_at: string
+          duration_minutes: number
+          focus_topic: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          duration_minutes: number
+          focus_topic?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          duration_minutes?: number
+          focus_topic?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      habit_logs: {
+        Row: {
+          completed_at: string
+          habit_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          habit_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          habit_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_logs_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      habits: {
+        Row: {
+          created_at: string
+          current_streak: number
+          description: string | null
+          frequency: string
+          id: string
+          last_completed_at: string | null
+          max_streak: number
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          description?: string | null
+          frequency?: string
+          id?: string
+          last_completed_at?: string | null
+          max_streak?: number
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          description?: string | null
+          frequency?: string
+          id?: string
+          last_completed_at?: string | null
+          max_streak?: number
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      identity_memory: {
+        Row: {
+          created_at: string
+          goals: string[]
+          onboarding_done: boolean
+          personality: string | null
+          preferred_tone: string | null
+          sleep_target: string | null
+          small_pleasures: string[]
+          struggles: string[]
+          trigger_words: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          goals?: string[]
+          onboarding_done?: boolean
+          personality?: string | null
+          preferred_tone?: string | null
+          sleep_target?: string | null
+          small_pleasures?: string[]
+          struggles?: string[]
+          trigger_words?: string[]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          goals?: string[]
+          onboarding_done?: boolean
+          personality?: string | null
+          preferred_tone?: string | null
+          sleep_target?: string | null
+          small_pleasures?: string[]
+          struggles?: string[]
+          trigger_words?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       interactions: {
         Row: {
           action: string | null
@@ -65,6 +262,36 @@ export type Database = {
           user_id?: string | null
           user_text?: string
           validate?: string | null
+        }
+        Relationships: []
+      }
+      memory_snapshots: {
+        Row: {
+          content: string
+          covers_from: string | null
+          covers_to: string | null
+          created_at: string
+          id: string
+          snapshot_type: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          covers_from?: string | null
+          covers_to?: string | null
+          created_at?: string
+          id?: string
+          snapshot_type: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          covers_from?: string | null
+          covers_to?: string | null
+          created_at?: string
+          id?: string
+          snapshot_type?: string
+          user_id?: string
         }
         Relationships: []
       }
