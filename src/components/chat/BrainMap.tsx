@@ -8,6 +8,7 @@ import {
   type BrainNode,
   type NodeLink,
 } from "@/functions/brain-map.fn";
+import { generatePlanFromGoal } from "@/functions/plans.fn";
 import {
   Plus,
   Trash2,
@@ -18,6 +19,7 @@ import {
   ZoomIn,
   ZoomOut,
   Info,
+  Sparkles,
 } from "lucide-react";
 
 interface VisualNode {
@@ -45,13 +47,17 @@ const RELATION_CONFIG = {
 
 interface BrainMapProps {
   userId: string;
+  onSwitchTab?: (tab: "insights" | "habits" | "focus" | "brain" | "plans") => void;
 }
 
-export function BrainMap({ userId }: BrainMapProps) {
+export function BrainMap({ userId, onSwitchTab }: BrainMapProps) {
   const getBrainData = useServerFn(fetchBrainMapData);
   const callAddNode = useServerFn(addManualNode);
   const callDeleteNode = useServerFn(deleteBrainNode);
   const callUpdateStatus = useServerFn(updateNodeStatus);
+  const callGeneratePlan = useServerFn(generatePlanFromGoal);
+
+  const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
 
   const [nodes, setNodes] = useState<BrainNode[]>([]);
   const [links, setLinks] = useState<NodeLink[]>([]);
@@ -565,6 +571,49 @@ export function BrainMap({ userId }: BrainMapProps) {
                   </button>
                 </div>
               </div>
+
+              {(selectedNode.type === "goal" || selectedNode.type === "problem") && (
+                <div className="space-y-1">
+                  <span className="text-[10px] text-ivory/30">تفكيك الهدف:</span>
+                  <button
+                    onClick={async () => {
+                      setIsGeneratingPlan(true);
+                      try {
+                        await callGeneratePlan({
+                          data: {
+                            userId,
+                            goalTitle: selectedNode.title,
+                            brainNodeId: selectedNode.id,
+                          },
+                        });
+                        if (onSwitchTab) {
+                          onSwitchTab("plans");
+                        }
+                      } catch (err) {
+                        console.error("[BrainMap] Error generating plan from node:", err);
+                        alert("حصلت مشكلة وأنا بقسم العقدة دي لخطوات. جرب تاني؟");
+                      } finally {
+                        setIsGeneratingPlan(false);
+                      }
+                    }}
+                    disabled={isGeneratingPlan}
+                    className="w-full py-1.5 px-3 rounded-lg bg-gold/15 border border-gold/30 hover:bg-gold/25 text-gold text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-40"
+                    style={{ color: "#E6C38E", borderColor: "rgba(230,195,142,0.3)" }}
+                  >
+                    {isGeneratingPlan ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        برتب الخطوات...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        قسّم لخطوات 📋
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-ivory/8 pt-3">

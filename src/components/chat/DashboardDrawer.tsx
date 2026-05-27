@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { BrainMap } from "@/components/chat/BrainMap";
+import { PlansList } from "@/components/chat/PlansList";
 import { fetchDashboardData, updateDashboardConfig, type DashboardData } from "@/functions/dashboard.fn";
 import {
   getHabitsAndFocusData,
@@ -95,6 +96,7 @@ interface DashboardDrawerProps {
   onOpenChange: (open: boolean) => void;
   streakDone: number;
   streakTotal: number;
+  defaultTab?: "insights" | "habits" | "focus" | "brain" | "plans";
 }
 
 export function DashboardDrawer({
@@ -103,6 +105,7 @@ export function DashboardDrawer({
   onOpenChange,
   streakDone,
   streakTotal,
+  defaultTab,
 }: DashboardDrawerProps) {
   const getDashboard = useServerFn(fetchDashboardData);
   const updateConfig = useServerFn(updateDashboardConfig);
@@ -113,7 +116,14 @@ export function DashboardDrawer({
   const callLogFocus = useServerFn(logFocusSession);
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain">("insights");
+  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans">("insights");
+
+  // Sync activeTab with defaultTab when drawer opens
+  useEffect(() => {
+    if (open && defaultTab) {
+      setActiveTab(defaultTab);
+    }
+  }, [open, defaultTab]);
 
   // Dashboard Data
   const [data, setData] = useState<DashboardData | null>(null);
@@ -413,7 +423,17 @@ export function DashboardDrawer({
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
             }`}
           >
-            خريطة الدماغ 🧠
+            الخريطة 🧠
+          </button>
+          <button
+            onClick={() => setActiveTab("plans")}
+            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+              activeTab === "plans"
+                ? "border-[#E6C38E] text-[#E6C38E]"
+                : "border-transparent text-ivory/45 hover:text-ivory/70"
+            }`}
+          >
+            الخطط 📋
           </button>
           <button
             onClick={() => setActiveTab("habits")}
@@ -438,7 +458,7 @@ export function DashboardDrawer({
         </div>
 
         {/* Tab Contents Scrollable Area */}
-        <div className={`flex-1 scrollbar-none py-4 ${activeTab === "brain" ? "overflow-hidden" : "overflow-y-auto"}`}>
+        <div className={`flex-1 scrollbar-none py-4 ${activeTab === "brain" || activeTab === "plans" ? "overflow-hidden" : "overflow-y-auto"}`}>
           {loading && activeTab === "insights" && (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <RefreshCw className="w-8 h-8 text-[#E6C38E] animate-spin" />
@@ -927,7 +947,14 @@ export function DashboardDrawer({
           {/* ──── TAB 4: BRAIN MAP ──── */}
           {activeTab === "brain" && (
             <div className="h-full flex flex-col">
-              <BrainMap userId={userId} />
+              <BrainMap userId={userId} onSwitchTab={(tab) => setActiveTab(tab)} />
+            </div>
+          )}
+
+          {/* ──── TAB 5: PLANS ──── */}
+          {activeTab === "plans" && (
+            <div className="h-full flex flex-col overflow-hidden">
+              <PlansList userId={userId} />
             </div>
           )}
         </div>

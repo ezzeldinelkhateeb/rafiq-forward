@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Send, Sparkles, Check, Flame, RefreshCw, Clock } from "lucide-react";
+import { Send, Sparkles, Check, Flame, RefreshCw, Clock, Loader2 } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
 import { Onboarding } from "@/components/Onboarding";
@@ -10,6 +10,8 @@ import { useSession } from "@/hooks/useSession";
 import { useRafiqChat } from "@/hooks/useRafiqChat";
 import { useProactive } from "@/hooks/useProactive";
 import { useStreak } from "@/hooks/useStreak";
+import { useServerFn } from "@tanstack/react-start";
+import { generatePlanFromGoal } from "@/functions/plans.fn";
 
 export const Route = createFileRoute("/")({
   component: Rafiq,
@@ -44,10 +46,29 @@ function Rafiq() {
   const { nudge, dismiss: dismissNudge } = useProactive(userId, isReady);
   const { streak, refresh: refreshStreak } = useStreak(userId, isReady);
 
+  const callGeneratePlan = useServerFn(generatePlanFromGoal);
+
   const [input, setInput] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [dashboardTab, setDashboardTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans">("insights");
+  const [planningMessageId, setPlanningMessageId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  async function handleMakePlan(msgId: string, actionText: string) {
+    if (!userId || !isReady) return;
+    setPlanningMessageId(msgId);
+    try {
+      await callGeneratePlan({ data: { userId, goalTitle: actionText } });
+      setDashboardTab("plans");
+      setShowDashboard(true);
+    } catch (err) {
+      console.error("[Rafiq] Error generating plan from chat:", err);
+      alert("معلش يا صاحبي حصلت مشكلة وأنا بقسم الإجراء ده لخطوات. جرب تاني كده؟");
+    } finally {
+      setPlanningMessageId(null);
+    }
+  }
 
   // Determine current orb mood based on thinking state and latest message's emotional tag
   let orbMood: "calm" | "thinking" | "motivated" | "drained" | "anxious" = "calm";
@@ -116,12 +137,16 @@ function Rafiq() {
         onOpenChange={setShowDashboard}
         streakDone={streak.done}
         streakTotal={streak.total}
+        defaultTab={dashboardTab}
       />
 
       {/* Header */}
       <header className="relative pt-5 pb-2 px-4 flex items-center justify-between gap-3">
         <button
-          onClick={() => setShowDashboard(true)}
+          onClick={() => {
+            setDashboardTab("insights");
+            setShowDashboard(true);
+          }}
           className="flex items-center gap-1.5 text-xs font-arabic text-ivory/50 px-2.5 py-1 rounded-full bg-ivory/[0.03] hover:bg-ivory/[0.07] border border-ivory/8 hover:border-[#E6C38E]/30 cursor-pointer transition-all active:scale-95"
           title="افتح لوحة البيانات وعي رفيق"
         >
@@ -220,6 +245,8 @@ function Rafiq() {
               msg={m}
               onConfirm={() => handleConfirm(m.id)}
               onAlternative={() => swapAlternative(m.id, userId, persona)}
+              isPlanning={planningMessageId === m.id}
+              onMakePlan={() => handleMakePlan(m.id, m.action || "")}
             />
           ))}
 
@@ -298,6 +325,8 @@ function MessageBubble({
   msg,
   onConfirm,
   onAlternative,
+  isPlanning,
+  onMakePlan,
 }: {
   msg: {
     id: string;
@@ -310,6 +339,8 @@ function MessageBubble({
   };
   onConfirm: () => void;
   onAlternative: () => void;
+  isPlanning?: boolean;
+  onMakePlan?: () => void;
 }) {
   if (msg.role === "user") {
     return (
@@ -378,6 +409,22 @@ function MessageBubble({
             >
               <RefreshCw className="w-3 h-3" />
               مش قادر · هاتلي حل تاني
+            </button>
+          )}
+
+          {!msg.actionDone && onMakePlan && (
+            <button
+              onClick={onMakePlan}
+              disabled={isPlanning}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-arabic text-[12px] transition-all text-ivory/55 hover:text-ivory/85 border border-ivory/10 hover:border-[#E6C38E]/25 bg-ivory/[0.02] cursor-pointer disabled:opacity-40"
+              title="خلي رفيق يقسم الإجراء ده لخطوات صغرى"
+            >
+              {isPlanning ? (
+                <Loader2 className="w-3 h-3 animate-spin text-[#E6C38E]" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5 text-[#E6C38E]" />
+              )}
+              قسّمها لخطوات 📋
             </button>
           )}
         </div>
