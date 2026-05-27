@@ -132,8 +132,7 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
           intensity: 5,
           source_text: userText,
         })
-        .then(() => {})
-        .catch(() => {});
+        .then(() => {}, () => {});
     }
 
     // ── Step 8: Update session message count (non-blocking) ──────────────
