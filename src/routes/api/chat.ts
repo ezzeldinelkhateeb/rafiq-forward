@@ -7,6 +7,7 @@ import { callGeminiStream, getSchemaForMode } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { summarizeSessionAndCompress } from "@/engine/memory/memory-summarizer";
+import { extractBrainNodesFromChat } from "@/functions/brain-map.fn";
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -167,6 +168,11 @@ export const Route = createFileRoute("/api/chat")({
                     console.error("[api/chat] Summarizer error:", e);
                   });
                 }
+
+                // Trigger automated brain-node extraction in background
+                extractBrainNodesFromChat({ data: { userId, userText } }).catch((e) => {
+                  console.error("[api/chat] Error extracting brain nodes:", e);
+                });
 
                 // Send metadata suffix at the end of the stream
                 const metadata = {

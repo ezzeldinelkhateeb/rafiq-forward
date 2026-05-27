@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { BrainMap } from "@/components/chat/BrainMap";
 import { fetchDashboardData, updateDashboardConfig, type DashboardData } from "@/functions/dashboard.fn";
 import {
   getHabitsAndFocusData,
@@ -112,7 +113,7 @@ export function DashboardDrawer({
   const callLogFocus = useServerFn(logFocusSession);
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus">("insights");
+  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain">("insights");
 
   // Dashboard Data
   const [data, setData] = useState<DashboardData | null>(null);
@@ -379,7 +380,7 @@ export function DashboardDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-md bg-[#121212] border-l border-ivory/10 text-ivory overflow-y-auto font-arabic scrollbar-none flex flex-col h-full"
+        className="w-full sm:max-w-lg bg-[#121212] border-l border-ivory/10 text-ivory overflow-hidden font-arabic scrollbar-none flex flex-col h-full"
         dir="rtl"
       >
         <SheetHeader className="text-right space-y-2 pb-2 shrink-0">
@@ -402,7 +403,17 @@ export function DashboardDrawer({
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
             }`}
           >
-            وعي رفيق وتقريرك
+            وعي رفيق
+          </button>
+          <button
+            onClick={() => setActiveTab("brain")}
+            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+              activeTab === "brain"
+                ? "border-[#E6C38E] text-[#E6C38E]"
+                : "border-transparent text-ivory/45 hover:text-ivory/70"
+            }`}
+          >
+            خريطة الدماغ 🧠
           </button>
           <button
             onClick={() => setActiveTab("habits")}
@@ -412,7 +423,7 @@ export function DashboardDrawer({
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
             }`}
           >
-            متابع العادات 🎯
+            العادات 🎯
           </button>
           <button
             onClick={() => setActiveTab("focus")}
@@ -422,12 +433,12 @@ export function DashboardDrawer({
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
             }`}
           >
-            جلسة تركيز ⏱
+            التركيز ⏱
           </button>
         </div>
 
         {/* Tab Contents Scrollable Area */}
-        <div className="flex-1 overflow-y-auto scrollbar-none py-4">
+        <div className={`flex-1 scrollbar-none py-4 ${activeTab === "brain" ? "overflow-hidden" : "overflow-y-auto"}`}>
           {loading && activeTab === "insights" && (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <RefreshCw className="w-8 h-8 text-[#E6C38E] animate-spin" />
@@ -910,6 +921,13 @@ export function DashboardDrawer({
                   )}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ──── TAB 4: BRAIN MAP ──── */}
+          {activeTab === "brain" && (
+            <div className="h-full flex flex-col">
+              <BrainMap userId={userId} />
             </div>
           )}
         </div>
