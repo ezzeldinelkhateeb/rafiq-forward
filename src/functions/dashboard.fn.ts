@@ -6,6 +6,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { selectFrom } from "@/integrations/supabase/typed-select";
 
 export interface DashboardData {
   identity: {
@@ -38,28 +39,26 @@ export const fetchDashboardData = createServerFn({ method: "POST" })
 
     const [identityResult, snapshotResult, patternsResult, emotionalResult] =
       await Promise.allSettled([
-        supabaseAdmin
-          .from("identity_memory")
-          .select("goals, struggles, personality, sleep_target, small_pleasures")
+        selectFrom("identity_memory", [
+          "goals", "struggles", "personality", "sleep_target", "small_pleasures",
+        ] as const)
           .eq("user_id", userId)
           .single(),
-        supabaseAdmin
-          .from("memory_snapshots")
-          .select("content")
+        selectFrom("memory_snapshots", ["content"] as const)
           .eq("user_id", userId)
           .eq("snapshot_type", "relationship")
           .order("created_at", { ascending: false })
           .limit(1)
           .single(),
-        supabaseAdmin
-          .from("behavioral_patterns")
-          .select("pattern_type, description, occurrence_count, last_seen_at")
+        selectFrom("behavioral_patterns", [
+          "pattern_type", "description", "occurrence_count", "last_seen_at",
+        ] as const)
           .eq("user_id", userId)
           .order("last_seen_at", { ascending: false })
           .limit(3),
-        supabaseAdmin
-          .from("emotional_timeline")
-          .select("emotional_state, created_at, source_text")
+        selectFrom("emotional_timeline", [
+          "emotional_state", "created_at", "source_text",
+        ] as const)
           .eq("user_id", userId)
           .order("created_at", { ascending: false })
           .limit(8),

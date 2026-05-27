@@ -9,6 +9,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { selectFrom } from "@/integrations/supabase/typed-select";
 import { callGemini } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
 import {
@@ -31,9 +32,9 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }): Promise<RafiqReply> => {
     // 1. Fetch original interaction
-    const { data: original } = await supabaseAdmin
-      .from("interactions")
-      .select("user_text, validate, reframe, action, persona")
+    const { data: original } = await selectFrom("interactions", [
+      "user_text", "validate", "reframe", "action", "persona",
+    ] as const)
       .eq("id", data.interactionId)
       .eq("user_id", data.userId)
       .single();
@@ -52,9 +53,9 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
       .eq("user_id", data.userId);
 
     // 3. Fetch user's identity memory (goals, struggles) to make planning specific
-    const { data: identity } = await supabaseAdmin
-      .from("identity_memory")
-      .select("goals, struggles, personality")
+    const { data: identity } = await selectFrom("identity_memory", [
+      "goals", "struggles", "personality",
+    ] as const)
       .eq("user_id", data.userId)
       .single();
 
@@ -157,9 +158,9 @@ export const regenerateAlternative = createServerFn({ method: "POST" })
     }) => input
   )
   .handler(async ({ data }): Promise<{ action: string }> => {
-    const { data: original } = await supabaseAdmin
-      .from("interactions")
-      .select("user_text, action")
+    const { data: original } = await selectFrom("interactions", [
+      "user_text", "action",
+    ] as const)
       .eq("id", data.interactionId)
       .eq("user_id", data.userId)
       .single();
