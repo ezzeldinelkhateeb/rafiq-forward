@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { BrainMap } from "@/components/chat/BrainMap";
 import { PlansList } from "@/components/chat/PlansList";
+import { JourneyTimeline } from "@/components/chat/JourneyTimeline";
 import { fetchDashboardData, updateDashboardConfig, type DashboardData } from "@/functions/dashboard.fn";
 import {
   getHabitsAndFocusData,
@@ -96,7 +97,7 @@ interface DashboardDrawerProps {
   onOpenChange: (open: boolean) => void;
   streakDone: number;
   streakTotal: number;
-  defaultTab?: "insights" | "habits" | "focus" | "brain" | "plans";
+  defaultTab?: "insights" | "habits" | "focus" | "brain" | "plans" | "journey";
 }
 
 export function DashboardDrawer({
@@ -116,7 +117,7 @@ export function DashboardDrawer({
   const callLogFocus = useServerFn(logFocusSession);
 
   // Tabs state
-  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans">("insights");
+  const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans" | "journey">("insights");
 
   // Sync activeTab with defaultTab when drawer opens
   useEffect(() => {
@@ -407,7 +408,7 @@ export function DashboardDrawer({
         <div className="flex border-b border-ivory/8 mt-3 shrink-0">
           <button
             onClick={() => setActiveTab("insights")}
-            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
               activeTab === "insights"
                 ? "border-[#E6C38E] text-[#E6C38E]"
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
@@ -417,7 +418,7 @@ export function DashboardDrawer({
           </button>
           <button
             onClick={() => setActiveTab("brain")}
-            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
               activeTab === "brain"
                 ? "border-[#E6C38E] text-[#E6C38E]"
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
@@ -427,7 +428,7 @@ export function DashboardDrawer({
           </button>
           <button
             onClick={() => setActiveTab("plans")}
-            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
               activeTab === "plans"
                 ? "border-[#E6C38E] text-[#E6C38E]"
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
@@ -436,8 +437,18 @@ export function DashboardDrawer({
             الخطط 📋
           </button>
           <button
+            onClick={() => setActiveTab("journey")}
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
+              activeTab === "journey"
+                ? "border-[#E6C38E] text-[#E6C38E]"
+                : "border-transparent text-ivory/45 hover:text-ivory/70"
+            }`}
+          >
+            رحلتي 🏆
+          </button>
+          <button
             onClick={() => setActiveTab("habits")}
-            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
               activeTab === "habits"
                 ? "border-[#E6C38E] text-[#E6C38E]"
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
@@ -447,7 +458,7 @@ export function DashboardDrawer({
           </button>
           <button
             onClick={() => setActiveTab("focus")}
-            className={`flex-1 pb-2.5 text-center text-xs font-semibold border-b-2 transition-all ${
+            className={`flex-1 pb-2.5 text-center text-[10px] sm:text-xs font-semibold border-b-2 transition-all ${
               activeTab === "focus"
                 ? "border-[#E6C38E] text-[#E6C38E]"
                 : "border-transparent text-ivory/45 hover:text-ivory/70"
@@ -458,7 +469,7 @@ export function DashboardDrawer({
         </div>
 
         {/* Tab Contents Scrollable Area */}
-        <div className={`flex-1 scrollbar-none py-4 ${activeTab === "brain" || activeTab === "plans" ? "overflow-hidden" : "overflow-y-auto"}`}>
+        <div className={`flex-1 scrollbar-none py-4 ${activeTab === "brain" || activeTab === "plans" || activeTab === "journey" ? "overflow-hidden" : "overflow-y-auto"}`}>
           {loading && activeTab === "insights" && (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <RefreshCw className="w-8 h-8 text-[#E6C38E] animate-spin" />
@@ -955,6 +966,13 @@ export function DashboardDrawer({
           {activeTab === "plans" && (
             <div className="h-full flex flex-col overflow-hidden">
               <PlansList userId={userId} />
+            </div>
+          )}
+
+          {/* ──── TAB 6: JOURNEY TIMELINE ──── */}
+          {activeTab === "journey" && (
+            <div className="h-full flex flex-col overflow-hidden">
+              <JourneyTimeline userId={userId} />
             </div>
           )}
         </div>
