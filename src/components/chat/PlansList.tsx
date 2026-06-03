@@ -88,7 +88,7 @@ export function PlansList({ userId }: PlansListProps) {
           const hasStep = plan.steps.some((s) => s.id === stepId);
           if (!hasStep) return plan;
 
-          const updatedSteps = plan.steps.map((s) =>
+          const updatedSteps: PlanStep[] = plan.steps.map((s) =>
             s.id === stepId
               ? {
                   ...s,
