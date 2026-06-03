@@ -107,7 +107,7 @@ export function directConversation(params: {
   }
 
   // Allow action overrides
-  const act: DialogueAct = dialogueAct;
+  const act = dialogueAct as DialogueAct;
   if (act === "silence" || act === "soft_presence" || act === "mirror" || act === "question") {
     allowAction = false;
   }
