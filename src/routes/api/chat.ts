@@ -1,13 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { assembleMemory } from "@/engine/orchestrator/context-assembler";
 import { analyzeBehavioralState } from "@/engine/analyzer/state-machine";
-import { selectResponseMode } from "@/engine/orchestrator/response-strategy";
 import { buildPrompt } from "@/engine/orchestrator/prompt-builder";
-import { callGeminiStream, getSchemaForMode } from "@/lib/ai-client";
+import { computeDynamicStance } from "@/engine/orchestrator/dynamic-stance";
+import { directConversation } from "@/engine/orchestrator/conversation-director";
+import { DIALOGUE_ACT_RESPONSE_SCHEMA } from "@/engine/orchestrator/dialogue-act-schemas";
+import { extractAndStoreOpenLoops } from "@/engine/memory/open-loop-extractor";
+import { callGeminiStream } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
+import { DEFAULT_SCORES } from "@/engine/events/event-types";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { summarizeSessionAndCompress } from "@/engine/memory/memory-summarizer";
 import { extractBrainNodesFromChat } from "@/functions/brain-map.fn";
+import { logEvent } from "@/engine/events/event-logger";
 
 export const Route = createFileRoute("/api/chat")({
   server: {
@@ -43,41 +48,46 @@ export const Route = createFileRoute("/api/chat")({
             recentEmotions: memory.recentEmotions,
           });
 
-          // ── Step 3: Select response mode ──
+          // ── Step 2b: Compute Dynamic Stance ──
+          const stance = computeDynamicStance(
+            memory.behavioralScores || DEFAULT_SCORES,
+            behaviorAnalysis.state,
+            memory.recentEmotions
+          );
+
+          // ── Step 3: Direct the conversation ──
           const isActionCompletion = userText.startsWith("تمام، عملت ده:") || userText === "تمام، عملتها ✓";
-          const mode = selectResponseMode({
+          const direction = directConversation({
             behaviorState: behaviorAnalysis.state,
-            persona,
+            stance,
+            consecutiveAdviceCount: consecutiveAdviceCount ?? 0,
+            userMessageLength: userText.length,
             hoursSinceLastSession: memory.hoursSinceLastSession,
             hasUnfinishedAction: !!(
               memory.lastAction && !memory.lastAction.done
             ),
             lastActionDone: memory.lastAction?.done ?? true,
-            recentMessageCount: recentMessageCount ?? 0,
-            userMessageLength: userText.length,
-            consecutiveAdviceCount: consecutiveAdviceCount ?? 0,
-            hasRelationshipMemory: memory.relationshipNarrative.length > 0,
             isActionCompletion,
-            recentModes: memory.recentModes,
           });
 
           // ── Step 4: Build prompt ──
           const { systemInstruction, userMessage } = buildPrompt({
-            persona,
-            mode,
+            stance,
+            dialogueAct: direction.dialogueAct,
             memory,
             userMessage: userText,
+            behavioralAnalysis: behaviorAnalysis,
+            recentRafiqTexts: memory.recentRafiqTexts,
           });
 
           // ── Step 5: Call Gemini Streaming ──
-          const schema = getSchemaForMode(mode);
           const responseStream = await callGeminiStream({
             model: AI_CONFIG.PRIMARY_MODEL,
             systemInstruction,
             userMessage,
-            temperature: AI_CONFIG.COMPANION_TEMPERATURES[mode] ?? AI_CONFIG.TEMPERATURE.COMPANION,
+            temperature: AI_CONFIG.TEMPERATURE.COMPANION,
             maxOutputTokens: AI_CONFIG.MAX_TOKENS.COMPANION,
-            responseSchema: schema,
+            responseSchema: DIALOGUE_ACT_RESPONSE_SCHEMA,
           });
 
           // ── Step 6: Create ReadableStream ──
@@ -140,7 +150,7 @@ export const Route = createFileRoute("/api/chat")({
                     reframe: parsed.reframe || null,
                     action: parsed.action || null,
                     emotional_tag: memory.currentEmotionalSignal,
-                    response_mode: mode,
+                    response_mode: direction.dialogueAct,
                   })
                   .select("id")
                   .single();
@@ -174,10 +184,35 @@ export const Route = createFileRoute("/api/chat")({
                   console.error("[api/chat] Error extracting brain nodes:", e);
                 });
 
+                // Extract and store open loops in background
+                extractAndStoreOpenLoops({
+                  userId,
+                  interactionId: saved?.id ?? crypto.randomUUID(),
+                  userText,
+                  rafiqText: parsed.text,
+                }).catch((e) => {
+                  console.error("[api/chat] Error extracting open loops:", e);
+                });
+
+                // Emit behavioral events (fire-and-forget)
+                void logEvent(userId, "message_sent", {
+                  sessionId,
+                  messageLength: userText.length,
+                  behavioralState: behaviorAnalysis.state,
+                  emotionalTag: memory.currentEmotionalSignal,
+                  responseMode: direction.dialogueAct,
+                });
+
+                if (behaviorAnalysis.isLateNight) {
+                  void logEvent(userId, "late_night_session", {
+                    hour: behaviorAnalysis.hourOfDay,
+                  });
+                }
+
                 // Send metadata suffix at the end of the stream
                 const metadata = {
                   id: saved?.id ?? crypto.randomUUID(),
-                  mode,
+                  mode: direction.dialogueAct,
                   emotionalTag: memory.currentEmotionalSignal,
                 };
                 controller.enqueue(encoder.encode(`__METADATA__${JSON.stringify(metadata)}`));

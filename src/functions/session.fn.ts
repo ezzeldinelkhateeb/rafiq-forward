@@ -7,6 +7,8 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { logEvent } from "@/engine/events/event-logger";
+import { runSessionStartEvents } from "@/engine/events/session-start-events";
 import type { RafiqUser, RafiqSession } from "@/types/companion";
 
 // ─── Resolve or Create User ────────────────────────────────────────────────
@@ -72,8 +74,38 @@ export const resolveSession = createServerFn({ method: "POST" })
           messageCount: session.message_count,
         },
       };
+
+      // ── 3. Fire session-start behavioral events (fire-and-forget) ────
+      // Runs AFTER response is already being returned to avoid blocking UX
     }
   );
+
+// ─── Fire Session Start Events (called post-resolve) ───────────────────────
+
+/**
+ * Called from the client after session resolves successfully.
+ * Fires behavioral events: sleep check, absence detection, late-night signal.
+ * Non-blocking — does NOT affect session resolution speed.
+ */
+export const fireSessionStartEvents = createServerFn({ method: "POST" })
+  .inputValidator((input: { userId: string }) => input)
+  .handler(async ({ data }) => {
+    const { userId } = data;
+    const hourOfDay = new Date().getHours();
+
+    // Fire all session-start behavioral events
+    void runSessionStartEvents(userId);
+
+    // Log session_start event
+    void logEvent(userId, "session_start", { hourOfDay });
+
+    // Log late_night_session if applicable
+    if (hourOfDay >= 23 || hourOfDay <= 4) {
+      void logEvent(userId, "late_night_session", { hourOfDay });
+    }
+
+    return { ok: true };
+  });
 
 // ─── Update Persona Preference ─────────────────────────────────────────────
 

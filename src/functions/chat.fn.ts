@@ -13,10 +13,13 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { callGemini, getSchemaForMode } from "@/lib/ai-client";
+import { callGemini } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
 import { assembleMemory } from "@/engine/orchestrator/context-assembler";
-import { selectResponseMode } from "@/engine/orchestrator/response-strategy";
+import { computeDynamicStance } from "@/engine/orchestrator/dynamic-stance";
+import { directConversation } from "@/engine/orchestrator/conversation-director";
+import { DIALOGUE_ACT_RESPONSE_SCHEMA } from "@/engine/orchestrator/dialogue-act-schemas";
+import { DEFAULT_SCORES } from "@/engine/events/event-types";
 import { buildPrompt } from "@/engine/orchestrator/prompt-builder";
 import { analyzeBehavioralState } from "@/engine/analyzer/state-machine";
 import { summarizeSessionAndCompress } from "@/engine/memory/memory-summarizer";
@@ -67,30 +70,36 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       recentEmotions: memory.recentEmotions,
     });
 
-    // ── Step 3: Select response mode ────────────────────────────────────
+    // ── Step 2b: Compute Dynamic Stance ──
+    const stance = computeDynamicStance(
+      memory.behavioralScores || DEFAULT_SCORES,
+      behaviorAnalysis.state,
+      memory.recentEmotions
+    );
+
+    // ── Step 3: Direct the conversation ──
     const isActionCompletion = userText.startsWith("تمام، عملت ده:") || userText === "تمام، عملتها ✓";
-    const mode = selectResponseMode({
+    const direction = directConversation({
       behaviorState: behaviorAnalysis.state,
-      persona,
+      stance,
+      consecutiveAdviceCount: consecutiveAdviceCount ?? 0,
+      userMessageLength: userText.length,
       hoursSinceLastSession: memory.hoursSinceLastSession,
       hasUnfinishedAction: !!(
         memory.lastAction && !memory.lastAction.done
       ),
       lastActionDone: memory.lastAction?.done ?? true,
-      recentMessageCount,
-      userMessageLength: userText.length,
-      consecutiveAdviceCount,
-      hasRelationshipMemory: memory.relationshipNarrative.length > 0,
       isActionCompletion,
-      recentModes: memory.recentModes,
     });
 
     // ── Step 4: Build prompt ─────────────────────────────────────────────
     const { systemInstruction, userMessage } = buildPrompt({
-      persona,
-      mode,
+      stance,
+      dialogueAct: direction.dialogueAct,
       memory,
       userMessage: userText,
+      behavioralAnalysis: behaviorAnalysis,
+      recentRafiqTexts: memory.recentRafiqTexts,
     });
 
     // ── Step 5: Call Gemini ──────────────────────────────────────────────
@@ -98,14 +107,14 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       model: AI_CONFIG.PRIMARY_MODEL,
       systemInstruction,
       userMessage,
-      temperature: AI_CONFIG.COMPANION_TEMPERATURES[mode] ?? AI_CONFIG.TEMPERATURE.COMPANION,
+      temperature: AI_CONFIG.TEMPERATURE.COMPANION,
       maxOutputTokens: AI_CONFIG.MAX_TOKENS.COMPANION,
       expectJson: true,
-      responseSchema: getSchemaForMode(mode),
+      responseSchema: DIALOGUE_ACT_RESPONSE_SCHEMA,
     });
 
     // ── Step 6: Parse response ───────────────────────────────────────────
-    const parsed = parseReply(aiResult.json, aiResult.text, mode);
+    const parsed = parseReply(aiResult.json, aiResult.text, direction.dialogueAct);
     parsed.emotionalTag = memory.currentEmotionalSignal;
 
     // ── Step 7: Persist interaction (non-blocking) ───────────────────────
@@ -115,7 +124,7 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
       persona,
       userText,
       parsed,
-      mode,
+      mode: direction.dialogueAct,
       emotionalTag: memory.currentEmotionalSignal,
     }).catch(() => {
       // Non-blocking — never block UX on persistence failure
@@ -158,7 +167,7 @@ export const generateRafiqReply = createServerFn({ method: "POST" })
 function parseReply(
   json: Record<string, unknown> | undefined,
   rawText: string,
-  mode: import("@/types/companion").ResponseMode
+  mode: string
 ): RafiqReply {
   const id = crypto.randomUUID();
 
@@ -205,7 +214,39 @@ function parseReply(
   };
 }
 
-// ─── Persistence ───────────────────────────────────────────────────────────
+// ─── Persistence ─────────────────────────────────────────────────────
+
+// ─── Load Chat History ───────────────────────────────────────────────────
+
+export interface ChatHistoryItem {
+  id: string;
+  user_text: string;
+  validate: string;
+  reframe: string | null;
+  action: string | null;
+  action_done: boolean;
+  response_mode: string;
+  emotional_tag: string | null;
+}
+
+export const loadChatHistory = createServerFn({ method: "POST" })
+  .inputValidator((input: { userId: string; limit?: number }) => input)
+  .handler(async ({ data }): Promise<ChatHistoryItem[]> => {
+    const { userId, limit = 10 } = data;
+    const { data: rows, error } = await supabaseAdmin
+      .from("interactions")
+      .select(
+        "id, user_text, validate, reframe, action, action_done, response_mode, emotional_tag"
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(limit);
+
+    if (error || !rows) return [];
+    return rows as ChatHistoryItem[];
+  });
+
+// ─── Persistence (internal) ──────────────────────────────────────────────────
 
 async function persistInteraction(params: {
   userId: string;

@@ -25,6 +25,20 @@ const SCATTERED_SIGNALS = [
   "كل حاجة", "أعمل إيه", "من فين أبدأ", "تايه", "مش مركز",
 ];
 
+const STUCK_SIGNALS = [
+  "مش عارف أتحرك", "واقف", "مكسل", "مش قادر أعمل حاجة",
+  "قعدت مكاني", "مش لاقي", "تعبان أبدأ", "مش عايز",
+  "مفيش فايدة", "سيبني", "مش فارق", "زهقت من كل حاجة",
+  "مش حاسس بحاجة", "نفس الحاجة", "مش بيتغير",
+];
+
+const REBUILDING_SIGNALS = [
+  "رجعت", "حاولت تاني", "ببدأ من جديد", "قمت", "فقت",
+  "رجعت تاني", "هحاول", "مش هسيب", "عايز أبدأ",
+  "محتاج أتحرك", "عايز أتغير", "بفكر أبدأ", "جاهز",
+  "يلا بينا", "نبدأ", "مستعد", "عايز أحاول",
+];
+
 function countSignals(text: string, signals: string[]): number {
   const lower = text.toLowerCase();
   return signals.filter((s) => lower.includes(s)).length;
@@ -65,6 +79,8 @@ export function analyzeBehavioralState(params: StateMachineParams): BehavioralAn
   const collapseCount = countSignals(userMessage, COLLAPSE_SIGNALS);
   const momentumCount = countSignals(userMessage, MOMENTUM_SIGNALS);
   const scatteredCount = countSignals(userMessage, SCATTERED_SIGNALS);
+  const stuckCount = countSignals(userMessage, STUCK_SIGNALS);
+  const rebuildingCount = countSignals(userMessage, REBUILDING_SIGNALS);
 
   // 2. Initialize scores for each state
   const scores: Record<UserBehaviorState, number> = {
@@ -91,8 +107,18 @@ export function analyzeBehavioralState(params: StateMachineParams): BehavioralAn
     signals.push(`كلمات زخم وإنجاز (${momentumCount})`);
   }
   if (scatteredCount > 0) {
-    scores.emotional_collapse += scatteredCount * 2.0; // Scattered feeds emotional collapse
+    scores.stuck += scatteredCount * 2.0;
+    scores.emotional_collapse += scatteredCount * 1.0;
     signals.push(`كلمات تشتت (${scatteredCount})`);
+  }
+  if (stuckCount > 0) {
+    scores.stuck += stuckCount * 3.0;
+    signals.push(`كلمات شلل وحيرة (${stuckCount})`);
+  }
+  if (rebuildingCount > 0) {
+    scores.rebuilding += rebuildingCount * 3.0;
+    scores.productive_momentum += rebuildingCount * 1.5;
+    signals.push(`كلمات عودة ونهوض (${rebuildingCount})`);
   }
 
   // 4. Context Modifier Weights
@@ -102,14 +128,17 @@ export function analyzeBehavioralState(params: StateMachineParams): BehavioralAn
     signals.push("وقت متأخر من الليل");
   }
 
-  // Action completion rate modifiers
+  // Action completion rate modifiers (including action avoidance detection)
   if (recentActionDoneRate >= 0.6) {
     scores.productive_momentum += 3.0;
     signals.push(`إنجاز عالي (${Math.round(recentActionDoneRate * 100)}%)`);
   } else if (recentActionDoneRate < 0.3 && recentActionDoneRate > 0) {
-    scores.stuck += 1.5;
+    scores.stuck += 2.5;
     scores.digital_escape += 1.0;
-    signals.push(`إنجاز منخفض (${Math.round(recentActionDoneRate * 100)}%)`);
+    signals.push(`تهرب من الخطوات (${Math.round(recentActionDoneRate * 100)}%)`);
+  } else if (recentActionDoneRate === 0 && sessionCount >= 3) {
+    scores.stuck += 3.0;
+    signals.push("مفيش ولا خطوة اتعملت من أكتر من ٣ جلسات");
   }
 
   // Time absence modifiers
@@ -163,6 +192,17 @@ export function analyzeBehavioralState(params: StateMachineParams): BehavioralAn
   // 6. Present / Onboarding fallback
   if (sessionCount <= 1 && scores.digital_escape < 2 && scores.emotional_collapse < 2) {
     scores.present += 3.0;
+  }
+  // Engaged present user: long thoughtful message with no distress signals
+  if (
+    userMessage.length > 40 &&
+    collapseCount === 0 &&
+    escapeCount === 0 &&
+    stuckCount === 0 &&
+    (momentumCount >= 1 || rebuildingCount >= 1)
+  ) {
+    scores.present += 3.0;
+    scores.productive_momentum += 1.0;
   }
 
   // 7. Find highest scoring state

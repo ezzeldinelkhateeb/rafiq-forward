@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { resolveSession } from "@/functions/session.fn";
+import { resolveSession, updatePersona, fireSessionStartEvents } from "@/functions/session.fn";
 import type { RafiqUser, RafiqSession, Persona } from "@/types/companion";
 
 const USER_KEY = "rafiq.user.id";
@@ -44,6 +44,8 @@ export interface SessionState {
 
 export function useSession(): SessionState {
   const callResolveSession = useServerFn(resolveSession);
+  const callUpdatePersona = useServerFn(updatePersona);
+  const callFireSessionStartEvents = useServerFn(fireSessionStartEvents);
 
   const [userId, setUserId] = useState("");
   const [sessionId, setSessionId] = useState("");
@@ -66,6 +68,8 @@ export function useSession(): SessionState {
         setSession(session);
         setSessionId(session.id);
         setIsReady(true);
+        // Fire session start events (sleep check, absence, etc.)
+        callFireSessionStartEvents({ data: { userId: uid } }).catch(() => {});
       })
       .catch(() => {
         // Fallback: use local UUID only, session-less mode
@@ -81,8 +85,12 @@ export function useSession(): SessionState {
       if (typeof window !== "undefined") {
         localStorage.setItem(PERSONA_KEY, p);
       }
+      // Sync persona to server (fire-and-forget)
+      if (userId) {
+        callUpdatePersona({ data: { userId, persona: p } }).catch(() => {});
+      }
     },
-    []
+    [userId, callUpdatePersona]
   );
 
   return { userId, sessionId, user, session, persona, isReady, setPersona };

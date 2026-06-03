@@ -5,6 +5,7 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { logEvent } from "@/engine/events/event-logger";
 
 export interface HabitData {
   id: string;
@@ -184,9 +185,16 @@ export const logHabitCompletion = createServerFn({ method: "POST" })
         user_id: userId,
         emotional_state: "motivated",
         intensity: 8,
-        source_text: `[أنجز عادة: ${habit.name}]`,
+        source_text: `[\u0623\u0646\u062c\u0632 \u0639\u0627\u062f\u0629: ${habit.name}]`,
       })
       .then(() => {}, () => {});
+    
+    // Emit habit_complete event (fire-and-forget)
+    void logEvent(userId, "habit_complete", {
+      habitId,
+      habitName: habit.name,
+      streak: newStreak,
+    });
 
     return { success: true, current_streak: newStreak };
   });
@@ -219,9 +227,59 @@ export const logFocusSession = createServerFn({ method: "POST" })
         user_id: userId,
         emotional_state: "motivated",
         intensity: 9,
-        source_text: `[جلسة تركيز ${durationMinutes} دقيقة: ${focusTopic}]`,
+        source_text: `[\u062c\u0644\u0633\u0629 \u062a\u0631\u0643\u064a\u0632 ${durationMinutes} \u062f\u0642\u064a\u0642\u0629: ${focusTopic}]`,
       })
       .then(() => {}, () => {});
+    
+    // Emit pomodoro_done event (fire-and-forget)
+    void logEvent(userId, "pomodoro_done", {
+      durationMinutes,
+      focusTopic,
+    });
 
     return session;
   });
+
+// ─── Log Focus Session Start ────────────────────────────────────────────────
+
+/**
+ * Called when the user starts a Pomodoro/focus timer.
+ * Emits focus_started event for behavioral tracking.
+ */
+export const logFocusStart = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { userId: string; durationMinutes: number; focusTopic?: string }) => input
+  )
+  .handler(async ({ data }) => {
+    const { userId, durationMinutes, focusTopic = "" } = data;
+
+    void logEvent(userId, "focus_started", {
+      durationMinutes,
+      focusTopic,
+    });
+
+    return { ok: true };
+  });
+
+// ─── Log Focus Session Abort ────────────────────────────────────────────────
+
+/**
+ * Called when user abandons a focus session before completion.
+ * Emits focus_aborted event which increases relapse probability.
+ */
+export const logFocusAbort = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { userId: string; durationMinutes: number; minutesCompleted: number; focusTopic?: string }) => input
+  )
+  .handler(async ({ data }) => {
+    const { userId, durationMinutes, minutesCompleted, focusTopic = "" } = data;
+
+    void logEvent(userId, "focus_aborted", {
+      durationMinutes,
+      minutesCompleted,
+      focusTopic,
+    });
+
+    return { ok: true };
+  });
+

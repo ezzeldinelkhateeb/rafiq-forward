@@ -10,6 +10,8 @@ import {
   deleteHabit,
   logHabitCompletion,
   logFocusSession,
+  logFocusStart,
+  logFocusAbort,
   type HabitData,
   type HabitLogData,
   type FocusSessionData,
@@ -115,6 +117,8 @@ export function DashboardDrawer({
   const callDeleteHabit = useServerFn(deleteHabit);
   const callLogHabit = useServerFn(logHabitCompletion);
   const callLogFocus = useServerFn(logFocusSession);
+  const callLogFocusStart = useServerFn(logFocusStart);
+  const callLogFocusAbort = useServerFn(logFocusAbort);
 
   // Tabs state
   const [activeTab, setActiveTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans" | "journey">("insights");
@@ -378,10 +382,45 @@ export function DashboardDrawer({
   };
 
   const handleToggleTimer = () => {
-    setTimerRunning((r) => !r);
+    const nextRunning = !timerRunning;
+    setTimerRunning(nextRunning);
+    if (nextRunning) {
+      callLogFocusStart({
+        data: {
+          userId,
+          durationMinutes: 25,
+          focusTopic: focusTopic.trim() || "جلسة عامة",
+        },
+      }).catch(() => {});
+    } else {
+      const minutesCompleted = 25 - timerMinutes;
+      if (minutesCompleted > 0) {
+        callLogFocusAbort({
+          data: {
+            userId,
+            durationMinutes: 25,
+            minutesCompleted,
+            focusTopic: focusTopic.trim() || "جلسة عامة",
+          },
+        }).catch(() => {});
+      }
+    }
   };
 
   const handleResetTimer = () => {
+    if (timerRunning) {
+      const minutesCompleted = 25 - timerMinutes;
+      if (minutesCompleted > 0) {
+        callLogFocusAbort({
+          data: {
+            userId,
+            durationMinutes: 25,
+            minutesCompleted,
+            focusTopic: focusTopic.trim() || "جلسة عامة",
+          },
+        }).catch(() => {});
+      }
+    }
     setTimerRunning(false);
     setTimerMinutes(25);
     setTimerSeconds(0);

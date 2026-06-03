@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { Send, Sparkles, Check, Flame, RefreshCw, Clock, Loader2 } from "lucide-react";
+import { Send, Sparkles, Check, Flame, RefreshCw, Clock, Loader2, Eye } from "lucide-react";
 import logoUrl from "@/assets/rafiq-logo.png";
 import { BreathingOrb } from "@/components/BreathingOrb";
 import { Onboarding } from "@/components/Onboarding";
@@ -10,8 +10,11 @@ import { useSession } from "@/hooks/useSession";
 import { useRafiqChat } from "@/hooks/useRafiqChat";
 import { useProactive } from "@/hooks/useProactive";
 import { useStreak } from "@/hooks/useStreak";
+import { usePatternMirror } from "@/hooks/usePatternMirror";
 import { useServerFn } from "@tanstack/react-start";
 import { generatePlanFromGoal } from "@/functions/plans.fn";
+import { saveOnboardingData } from "@/functions/onboarding.fn";
+import { generateCharacterArc, ARC_MILESTONES } from "@/functions/character-arc.fn";
 
 export const Route = createFileRoute("/")({
   component: Rafiq,
@@ -42,17 +45,21 @@ const ONBOARDED_KEY = "rafiq.onboarded";
 
 function Rafiq() {
   const { userId, sessionId, persona, isReady, setPersona } = useSession();
-  const { messages, thinking, error, send, confirmAction, swapAlternative, clearError } = useRafiqChat();
-  const { nudge, dismiss: dismissNudge } = useProactive(userId, isReady);
+  const { messages, thinking, error, send, confirmAction, swapAlternative, clearError, loadHistory } = useRafiqChat();
+  const { nudge, dismiss: dismissNudge, accept: acceptNudge } = useProactive(userId, isReady);
   const { streak, refresh: refreshStreak } = useStreak(userId, isReady);
+  const { mirror: patternMirror, dismiss: dismissMirror } = usePatternMirror(userId, isReady);
 
   const callGeneratePlan = useServerFn(generatePlanFromGoal);
+  const callSaveOnboarding = useServerFn(saveOnboardingData);
+  const callGenerateArc = useServerFn(generateCharacterArc);
 
   const [input, setInput] = useState("");
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
   const [dashboardTab, setDashboardTab] = useState<"insights" | "habits" | "focus" | "brain" | "plans">("insights");
   const [planningMessageId, setPlanningMessageId] = useState<string | null>(null);
+  const [progressMoment, setProgressMoment] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   async function handleMakePlan(msgId: string, actionText: string) {
@@ -95,6 +102,13 @@ function Rafiq() {
     }
   }
 
+  // Load chat history on session ready
+  useEffect(() => {
+    if (isReady && userId) {
+      loadHistory(userId);
+    }
+  }, [isReady, userId, loadHistory]);
+
   // Onboarding check
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -110,9 +124,28 @@ function Rafiq() {
     });
   }, [messages, thinking]);
 
-  function finishOnboarding() {
+  async function finishOnboarding(data: {
+    name: string;
+    blocker: string;
+    goal: string;
+    sleepTime: string;
+    smallPleasure: string;
+  }) {
     localStorage.setItem(ONBOARDED_KEY, "1");
     setShowOnboarding(false);
+    // Save onboarding data to Supabase in background
+    if (userId) {
+      callSaveOnboarding({
+        data: {
+          userId,
+          name: data.name,
+          blocker: data.blocker,
+          goal: data.goal,
+          sleepTime: data.sleepTime,
+          smallPleasure: data.smallPleasure,
+        },
+      }).catch(() => {});
+    }
   }
 
   async function handleSend(text: string) {
@@ -126,7 +159,50 @@ function Rafiq() {
     if (!isReady || !userId || !sessionId) return;
     await confirmAction(msgId, userId, sessionId, persona);
     refreshStreak();
+    const done = streak.done + 1;
+
+    // Character Arc — milestone moments
+    const isMilestone = (ARC_MILESTONES as readonly number[]).includes(done);
+    if (isMilestone && userId) {
+      callGenerateArc({ data: { userId, milestone: done } })
+        .then(({ arcMessage }) => {
+          if (arcMessage) {
+            // Inject arc message as a special Rafiq message after a short delay
+            setTimeout(() => {
+              // This triggers via the chat state — we use send internally
+              // The arc message appears as a new Rafiq bubble
+              window.dispatchEvent(new CustomEvent("rafiq:arc", { detail: { arcMessage } }));
+            }, 1200);
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Progress moment toast for non-milestones
+    if (!isMilestone) {
+      if (done % 5 === 0) {
+        setProgressMoment(`🏆 ${done} خطوة خلصتها مع رفيق! ده مش هين — استمر.`);
+        setTimeout(() => setProgressMoment(null), 4000);
+      } else if (done === 1) {
+        setProgressMoment(`✨ أول خطوة عملتها! ده أصعب ما في الموضوع.`);
+        setTimeout(() => setProgressMoment(null), 4000);
+      }
+    }
   }
+
+  // ── Character Arc event listener ─────────────────────────────────────────
+  // Arc messages are injected via custom event after milestone detection
+  useEffect(() => {
+    function onArcEvent(e: Event) {
+      const { arcMessage } = (e as CustomEvent<{ arcMessage: string }>).detail;
+      if (!arcMessage) return;
+      // Directly send as a Rafiq message into the existing chat
+      handleSend(`__arc__: ${arcMessage}`);
+    }
+    window.addEventListener("rafiq:arc", onArcEvent);
+    return () => window.removeEventListener("rafiq:arc", onArcEvent);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isReady, userId, sessionId]);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#121212] text-ivory">
@@ -155,6 +231,31 @@ function Rafiq() {
           <span className="text-ivory/25">/</span>
           <span className="text-ivory/40">{streak.total}</span>
         </button>
+        {/* Progress Moment Toast */}
+        {progressMoment && (
+          <div
+            style={{
+              position: "absolute",
+              top: 60,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "linear-gradient(135deg, rgba(230,195,142,0.18), rgba(125,143,106,0.12))",
+              border: "1px solid rgba(230,195,142,0.4)",
+              borderRadius: 16,
+              padding: "10px 20px",
+              color: "#E6C38E",
+              fontFamily: "var(--font-arabic, serif)",
+              fontSize: 14,
+              zIndex: 40,
+              whiteSpace: "nowrap",
+              animation: "fadeInUp 0.3s ease",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            {progressMoment}
+          </div>
+        )}
+
         <h1 className="sr-only">رفيق — مساعدك الذكي للتخلص من التشتت وبناء العادات بالعامية المصرية</h1>
         <img
           src={logoUrl}
@@ -169,36 +270,11 @@ function Rafiq() {
         <div className="w-12" />
       </header>
 
-      {/* Persona Selector */}
-      <div className="px-4 pt-1">
-        <div className="max-w-xl mx-auto flex items-center justify-center gap-1.5 p-1 rounded-full border border-ivory/8 bg-ivory/[0.02]">
-          {PERSONAS.map((p) => {
-            const active = persona === p.id;
-            return (
-              <button
-                key={p.id}
-                onClick={() => setPersona(p.id)}
-                className={`flex-1 px-3 py-1.5 rounded-full font-arabic text-[13px] transition-all ${
-                  active ? "text-[#121212]" : "text-ivory/55 hover:text-ivory/85"
-                }`}
-                style={
-                  active
-                    ? { background: "linear-gradient(135deg, #E6C38E, #d4ad6e)" }
-                    : undefined
-                }
-              >
-                {p.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Orb */}
       <div className="pt-3 pb-3">
         <BreathingOrb thinking={thinking} mood={orbMood} />
         <p className="text-center text-[11px] text-ivory/35 mt-3 font-arabic tracking-wide">
-          {PERSONAS.find((x) => x.id === persona)?.sub}
+          رفيقك السلوكي · معاك خطوة بخطوة
         </p>
       </div>
 
@@ -211,11 +287,40 @@ function Rafiq() {
               nudge={nudge}
               onDismiss={dismissNudge}
               onReply={(text) => {
-                dismissNudge();
+                acceptNudge(text);
                 handleSend(text);
               }}
             />
           )}
+
+          {/* Pattern Mirror — weekly behavioral insight, shown once per week */}
+          {patternMirror && messages.length === 0 && !nudge && (
+            <div
+              className="animate-fade-up rounded-2xl px-5 py-4"
+              dir="rtl"
+              style={{
+                background: "linear-gradient(135deg, rgba(125,143,106,0.10), rgba(230,195,142,0.05))",
+                border: "1px solid rgba(125,143,106,0.3)",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <Eye className="w-3.5 h-3.5" style={{ color: "#7D8F6A" }} />
+                <p className="text-[10px] font-arabic tracking-widest" style={{ color: "#7D8F6A", opacity: 0.8 }}>
+                  مرآة الأسبوع
+                </p>
+              </div>
+              <p className="font-arabic text-[15px] leading-relaxed" style={{ color: "#F4F4F0" }}>
+                {patternMirror}
+              </p>
+              <button
+                onClick={dismissMirror}
+                className="mt-3 text-[11px] font-arabic text-ivory/30 hover:text-ivory/60 transition-colors"
+              >
+                شكراً رفيق ×
+              </button>
+            </div>
+          )}
+
 
           {messages.length === 0 && !thinking && !nudge && (
             <div
@@ -247,6 +352,7 @@ function Rafiq() {
               onAlternative={() => swapAlternative(m.id, userId, persona)}
               isPlanning={planningMessageId === m.id}
               onMakePlan={() => handleMakePlan(m.id, m.action || "")}
+              onCommit={(commitText) => handleSend(commitText)}
             />
           ))}
 
@@ -327,6 +433,7 @@ function MessageBubble({
   onAlternative,
   isPlanning,
   onMakePlan,
+  onCommit,
 }: {
   msg: {
     id: string;
@@ -336,12 +443,17 @@ function MessageBubble({
     action?: string;
     actionDone?: boolean;
     alternativeTried?: boolean;
+    mode?: string;
   };
   onConfirm: () => void;
   onAlternative: () => void;
   isPlanning?: boolean;
   onMakePlan?: () => void;
+  onCommit?: (commitText: string) => void;
 }) {
+  const [showCommitInput, setShowCommitInput] = useState(false);
+  const [commitValue, setCommitValue] = useState("");
+
   if (msg.role === "user") {
     return (
       <div className="flex justify-end animate-fade-up">
@@ -352,16 +464,29 @@ function MessageBubble({
     );
   }
 
+  // Special styling for character arc milestone messages
+  const isArcMessage = msg.mode === "character_arc";
+
   return (
     <div className="flex flex-col items-start gap-2 animate-fade-up">
       <div
         className="max-w-[88%] rounded-2xl rounded-tl-sm px-4 py-3 font-arabic text-[15px] leading-relaxed space-y-1.5"
         style={{
-          background: "linear-gradient(135deg, rgba(230,195,142,0.08), rgba(125,143,106,0.05))",
-          border: "1px solid rgba(230,195,142,0.18)",
+          background: isArcMessage
+            ? "linear-gradient(135deg, rgba(230,195,142,0.15), rgba(125,143,106,0.10))"
+            : "linear-gradient(135deg, rgba(230,195,142,0.08), rgba(125,143,106,0.05))",
+          border: isArcMessage
+            ? "1px solid rgba(230,195,142,0.40)"
+            : "1px solid rgba(230,195,142,0.18)",
           color: "#F4F4F0",
+          boxShadow: isArcMessage ? "0 0 20px rgba(230,195,142,0.08)" : "none",
         }}
       >
+        {isArcMessage && (
+          <p className="text-[10px] font-arabic tracking-widest mb-1" style={{ color: "#E6C38E", opacity: 0.7 }}>
+            ✦ لحظة وعي
+          </p>
+        )}
         {msg.text && <p>{msg.text}</p>}
         {msg.reframe && (
           <p className="text-[14px] pt-1.5 border-t border-ivory/8" style={{ color: "#cfd6c1" }}>
@@ -399,6 +524,52 @@ function MessageBubble({
               <Clock className="w-3 h-3 text-[#E6C38E]" />
               أضف للتقويم
             </a>
+          )}
+
+          {/* ── Time Commitment ─────────────────────────────────────────── */}
+          {!msg.actionDone && !showCommitInput && (
+            <button
+              onClick={() => setShowCommitInput(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full font-arabic text-[12px] transition-all text-ivory/55 hover:text-[#E6C38E]/80 border border-ivory/10 hover:border-[#E6C38E]/30 bg-ivory/[0.02]"
+              title="حدد امتى هتعملها"
+            >
+              ⏰ هعملها الساعة...
+            </button>
+          )}
+
+          {!msg.actionDone && showCommitInput && (
+            <div className="flex items-center gap-1.5 w-full mt-1" dir="rtl">
+              <input
+                autoFocus
+                value={commitValue}
+                onChange={(e) => setCommitValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && commitValue.trim()) {
+                    onCommit?.(`هعمل "${msg.action}" ${commitValue.trim()} 🕐`);
+                    setShowCommitInput(false);
+                    setCommitValue("");
+                  }
+                  if (e.key === "Escape") {
+                    setShowCommitInput(false);
+                    setCommitValue("");
+                  }
+                }}
+                placeholder="مثال: 9 بالليل، بكرة الصبح..."
+                className="flex-1 bg-ivory/[0.05] border border-[#E6C38E]/30 rounded-full px-3 py-1.5 text-[12px] font-arabic text-ivory placeholder:text-ivory/30 outline-none focus:border-[#E6C38E]/60 transition-colors"
+              />
+              <button
+                onClick={() => {
+                  if (commitValue.trim()) {
+                    onCommit?.(`هعمل "${msg.action}" ${commitValue.trim()} 🕐`);
+                  }
+                  setShowCommitInput(false);
+                  setCommitValue("");
+                }}
+                className="text-[#E6C38E]/70 hover:text-[#E6C38E] text-[11px] font-arabic px-2"
+              >
+                تمام
+              </button>
+            </div>
           )}
 
           {!msg.actionDone && !msg.alternativeTried && (

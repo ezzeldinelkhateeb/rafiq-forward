@@ -1,11 +1,11 @@
 import type { ResponseMode } from "@/types/companion";
 import type { UserBehaviorState } from "@/types/behavioral";
-import type { Persona } from "@/types/companion";
+import type { DynamicStance } from "./dynamic-stance";
 import { selectBestModeByRhythm } from "./conversation-rhythm";
 
 export interface StrategyInput {
   behaviorState: UserBehaviorState;
-  persona: Persona;
+  stance: DynamicStance;
   hoursSinceLastSession: number;
   hasUnfinishedAction: boolean;
   lastActionDone: boolean;
@@ -22,13 +22,13 @@ export interface StrategyInput {
  * 
  * Logic flow:
  * 1. Immediate priority triggers (reconnect, celebrate, followup).
- * 2. Collect candidates based on user behavior state, late-night hours, and persona.
+ * 2. Collect candidates based on user behavior state, late-night hours, and dynamic stance.
  * 3. Consult the conversation rhythm engine to select the best candidate.
  */
 export function selectResponseMode(input: StrategyInput): ResponseMode {
   const {
     behaviorState,
-    persona,
+    stance,
     hoursSinceLastSession,
     hasUnfinishedAction,
     lastActionDone,
@@ -38,14 +38,14 @@ export function selectResponseMode(input: StrategyInput): ResponseMode {
     recentModes,
   } = input;
 
-  // ── Priority 1: Reconnect after absence ─────────────────────────
-  if (hoursSinceLastSession > 48 && recentMessageCount === 0) {
-    return "reconnect";
-  }
-
-  // ── Priority 2: Prolonged silence-breaking ───────────────────────────
+  // ── Priority 1: Prolonged silence-breaking (>5 days) ─────────────────
   if (hoursSinceLastSession > 120 && recentMessageCount === 0) {
     return "silence_breaking";
+  }
+
+  // ── Priority 2: Reconnect after absence (>48h) ──────────────────────
+  if (hoursSinceLastSession > 48 && recentMessageCount === 0) {
+    return "reconnect";
   }
 
   // ── Priority 3: Action Completion Celebration ──────────────────────
@@ -80,21 +80,36 @@ export function selectResponseMode(input: StrategyInput): ResponseMode {
     candidates.push("relapse_detection");
     candidates.push("tough_love");
     candidates.push("question_only");
+    candidates.push("challenge");
   } else if (behaviorState === "productive_momentum" || behaviorState === "rebuilding") {
     candidates.push("momentum_push");
     candidates.push("micro_story");
+    candidates.push("celebrate");
+  } else if (behaviorState === "present") {
+    candidates.push("question_only");
+    candidates.push("observation");
+    candidates.push("micro_story");
+  } else if (behaviorState === "unknown") {
+    candidates.push("quiet_presence");
+    candidates.push("question_only");
   }
 
-  // ── Persona Preferences ──────────────────────────────────────────────
-  if (persona === "sage") {
+  // ── Stance-Based Preferences ─────────────────────────────────────────
+  if (stance.depth > 0.6) {
     candidates.push("deep_reflection");
     candidates.push("observation");
-  } else if (persona === "coach") {
+  }
+  if (stance.pressure > 0.6) {
     candidates.push("tough_love");
     candidates.push("challenge");
-  } else if (persona === "friend") {
+  }
+  if (stance.playfulness > 0.6) {
     candidates.push("playful_observation");
     candidates.push("micro_story");
+  }
+  if (stance.warmth > 0.7) {
+    candidates.push("emotional_mirroring");
+    candidates.push("quiet_presence");
   }
 
   // ── Generic Fallbacks ────────────────────────────────────────────────
@@ -105,6 +120,16 @@ export function selectResponseMode(input: StrategyInput): ResponseMode {
 
   candidates.push("validate_reframe_act");
   candidates.push("question_only");
+
+  // Consecutive Advice Fatigue Guard
+  if (input.consecutiveAdviceCount >= 2) {
+    const idx = candidates.indexOf("validate_reframe_act");
+    if (idx !== -1) candidates.splice(idx, 1);
+    if (!candidates.includes("question_only")) candidates.push("question_only");
+    if (!candidates.includes("observation")) candidates.push("observation");
+    if (!candidates.includes("playful_observation")) candidates.push("playful_observation");
+    if (!candidates.includes("micro_story")) candidates.push("micro_story");
+  }
 
   // ── Rhythm & Pacing Selection ────────────────────────────────────────
   return selectBestModeByRhythm(candidates, recentModes);

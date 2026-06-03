@@ -42,7 +42,7 @@ export type ResponseMode =
  */
 export interface RafiqReply {
   id: string;
-  mode: ResponseMode;
+  mode: ResponseMode | string;
   /** Primary response text — always present */
   text: string;
   /** Secondary reframe/insight — present for validate_reframe_act */
@@ -86,6 +86,7 @@ export interface ProactiveNudge {
   text: string;
   subtext?: string;
   action?: string;
+  interruptionConfidence?: number;
 }
 
 // ─── Streak / Stats ──────────────────────────────────────────────────────────

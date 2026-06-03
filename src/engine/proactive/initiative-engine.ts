@@ -10,6 +10,10 @@
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { ProactiveNudge, ProactiveTrigger } from "@/types/companion";
+import { consumeEvents } from "@/engine/events/event-logger";
+import { computeBehavioralScores } from "@/engine/events/event-scores";
+import type { BehavioralScores } from "@/engine/events/event-types";
+import { callGemini } from "@/lib/ai-client";
 
 // ─── Trigger Definitions ───────────────────────────────────────────────────
 
@@ -21,6 +25,7 @@ interface TriggerContext {
   recentActionDoneRate: number; // 0–1 over last 7 sessions
   recentSessionCount: number; // sessions in last 7 days
   hourOfDay: number;
+  scores: BehavioralScores;
 }
 
 interface TriggerResult {
@@ -62,12 +67,11 @@ function checkLateNight(ctx: TriggerContext): TriggerResult {
   };
 }
 
-/** Low action completion rate (< 0.2) and > 24h gap */
+/** Low action completion rate (< 0.2) or relapse score > 0.5, and > 24h gap */
 function checkRelapseSignal(ctx: TriggerContext): TriggerResult {
   return {
     triggered:
-      ctx.recentActionDoneRate < 0.2 &&
-      ctx.recentSessionCount >= 3 &&
+      (ctx.scores.relapseProbability > 0.5 || ctx.recentActionDoneRate < 0.2) &&
       ctx.hoursSinceLastSession > 24,
     type: "relapse_signal",
     priority: 3,
@@ -84,12 +88,11 @@ function checkProlongedStagnation(ctx: TriggerContext): TriggerResult {
   };
 }
 
-/** 3+ actions completed in past week — momentum worthy of recognition */
+/** High momentum score (> 0.6) or 3+ actions completed in past week — momentum worthy of recognition */
 function checkStreakMomentum(ctx: TriggerContext): TriggerResult {
   return {
     triggered:
-      ctx.recentActionDoneRate >= 0.6 &&
-      ctx.recentSessionCount >= 3 &&
+      (ctx.scores.momentumScore > 0.6 || ctx.recentActionDoneRate >= 0.6) &&
       ctx.hoursSinceLastSession < 48,
     type: "streak_momentum",
     priority: 5,
@@ -98,13 +101,43 @@ function checkStreakMomentum(ctx: TriggerContext): TriggerResult {
 
 // ─── Trigger Orchestrator ─────────────────────────────────────────────────
 
+function calculateInterruptionConfidence(
+  type: ProactiveTrigger,
+  ctx: TriggerContext
+): number {
+  switch (type) {
+    case "return_after_absence":
+      // Ranges from 0.5 (at 48h) to 1.0 (at 144h)
+      return Math.min(1.0, 0.5 + (ctx.hoursSinceLastSession - 48) / 192);
+    case "unfinished_action":
+      // Ranges based on trustScore and hours since last session
+      const trustWeight = 0.3 * ctx.scores.trustScore;
+      const timeWeight = Math.min(0.3, (ctx.hoursSinceLastSession - 24) / 96);
+      return Math.min(1.0, 0.4 + trustWeight + timeWeight);
+    case "late_night_awareness":
+      // Based on sleep debt
+      return Math.min(1.0, 0.5 + 0.5 * ctx.scores.sleepDebtScore);
+    case "relapse_signal":
+      // Based on relapse probability
+      return Math.min(1.0, 0.4 + 0.6 * ctx.scores.relapseProbability);
+    case "prolonged_stagnation":
+      // Higher confidence the longer the stagnation
+      return Math.min(1.0, 0.8 + (ctx.hoursSinceLastSession - 120) / 240);
+    case "streak_momentum":
+      // Based on momentum score
+      return Math.min(1.0, 0.5 + 0.5 * ctx.scores.momentumScore);
+    default:
+      return 0.0;
+  }
+}
+
 /**
  * Evaluates all triggers in priority order.
  * Returns the highest-priority triggered result, or null.
  */
 export async function evaluateProactiveTriggers(
   userId: string
-): Promise<{ type: ProactiveTrigger; ctx: TriggerContext } | null> {
+): Promise<{ type: ProactiveTrigger; ctx: TriggerContext; confidence: number } | null> {
   const ctx = await buildTriggerContext(userId);
 
   const triggers = [
@@ -120,7 +153,10 @@ export async function evaluateProactiveTriggers(
 
   if (triggers.length === 0) return null;
 
-  return { type: triggers[0].type, ctx };
+  const type = triggers[0].type;
+  const confidence = calculateInterruptionConfidence(type, ctx);
+
+  return { type, ctx, confidence };
 }
 
 // ─── Context Builder ──────────────────────────────────────────────────────
@@ -128,8 +164,8 @@ export async function evaluateProactiveTriggers(
 async function buildTriggerContext(userId: string): Promise<TriggerContext> {
   const now = new Date();
 
-  // Fetch last session info + recent action stats
-  const [lastInteractionResult, recentStatsResult] = await Promise.allSettled([
+  // Fetch last session info + recent action stats + events in parallel
+  const [lastInteractionResult, recentStatsResult, eventsResult] = await Promise.allSettled([
     supabaseAdmin
       .from("interactions")
       .select("action, action_done, created_at")
@@ -146,6 +182,7 @@ async function buildTriggerContext(userId: string): Promise<TriggerContext> {
         new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
       )
       .order("created_at", { ascending: false }),
+    consumeEvents(userId, { limit: 50 }),
   ]);
 
   const lastInteraction =
@@ -160,6 +197,9 @@ async function buildTriggerContext(userId: string): Promise<TriggerContext> {
       ? recentStatsResult.value.data
       : [];
 
+  const events =
+    eventsResult.status === "fulfilled" ? eventsResult.value : [];
+
   // Hours since last session
   const hoursSinceLastSession = lastInteraction
     ? (now.getTime() - new Date(lastInteraction.created_at).getTime()) /
@@ -172,6 +212,11 @@ async function buildTriggerContext(userId: string): Promise<TriggerContext> {
   const recentActionDoneRate =
     withAction.length > 0 ? doneCount / withAction.length : 0;
 
+  // Compute behavioral scores
+  const scores = computeBehavioralScores(events, {
+    interactionStats: { done: doneCount, total: withAction.length },
+  });
+
   return {
     userId,
     hoursSinceLastSession,
@@ -180,6 +225,7 @@ async function buildTriggerContext(userId: string): Promise<TriggerContext> {
     recentActionDoneRate,
     recentSessionCount: recentInteractions.length,
     hourOfDay: now.getHours(),
+    scores,
   };
 }
 
@@ -247,6 +293,56 @@ export function pickNudgeText(
   return base;
 }
 
+async function generateDynamicNudgeText(
+  type: Exclude<ProactiveTrigger, "none">,
+  ctx: TriggerContext
+): Promise<string> {
+  const systemInstruction = `
+أنت رفيق — رفيق السلوك ومساعد وناصح للمستخدم.
+مهمتك الآن هي كتابة "نغزة" (proactive nudge) قصيرة ودافئة وجدعة باللهجة العامية المصرية لتشجيع المستخدم أو الاطمئنان عليه بناءً على تحليله السلوكي.
+
+نوع النغزة المطلوب كتابتها:
+${type === "return_after_absence" ? "- ترحيب بعد غياب (غياب أكثر من 48 ساعة). اسأل عنه بدفء." : ""}
+${type === "unfinished_action" ? `- تذكير بخطوة لم تكتمل: "${ctx.lastActionText || "خطوتك السابقة"}". فكره بلطف وبدون لوم.` : ""}
+${type === "prolonged_stagnation" ? "- تنبيه ركود طويل (لم يفتح التطبيق منذ 5+ أيام). اعرض المساعدة أو الدردشة البسيطة لتفريغ الزحمة." : ""}
+${type === "streak_momentum" ? "- تشجيع على زخم وإنجاز رائع (أكمل عدة خطوات بنجاح). هنئه وشجعه على الاستمرار." : ""}
+${type === "relapse_signal" ? "- دعم عند إشارات انتكاسة أو تشتت (انخفاض إنجاز الخطوات). ذكره بأنك في ضهره واقترح عليه يرمي الموبايل شوية." : ""}
+${type === "late_night_awareness" ? "- تنبيه سهر متأخر بالليل (يسهر كثيراً). شجعه بلطف على إغلاق الشاشة والنوم." : ""}
+
+المؤشرات السلوكية الحالية للمستخدم:
+- زخم الحركة: ${Math.round(ctx.scores.momentumScore * 100)}%
+- نسبة الالتزام بالخطوات: ${Math.round(ctx.scores.trustScore * 100)}%
+- احتمال الانتكاسة: ${Math.round(ctx.scores.relapseProbability * 100)}%
+- دين النوم: ${Math.round(ctx.scores.sleepDebtScore * 100)}%
+
+قواعد صارمة للكتابة:
+١) اكتب جملة واحدة فقط قصيرة (بين 5 إلى 12 كلمة).
+٢) النبرة يجب أن تكون مصرية أصيلة وجدعة ودافئة جداً وليست رسمية أو ذكاء اصطناعي آلي.
+٣) لا تستخدم كليشيهات جاهزة مكررة. تجنب البدء بكلمات مكررة دائماً.
+٤) استخدم إيموجي واحد معبر في النهاية أو لا تستخدم.
+٥) ممنوع تماماً كتابة أي توضيح أو أي كلام إضافي، فقط النص الذي سيظهر للمستخدم.
+`.trim();
+
+  try {
+    const result = await callGemini({
+      systemInstruction,
+      userMessage: "اكتب النغزة الآن بالعامية المصرية.",
+      temperature: 0.85,
+      maxOutputTokens: 50,
+      expectJson: false,
+    });
+    const text = result.text.trim().replace(/^["']|["']$/g, ""); // Clean quotes if any
+    if (text && text.length > 5) {
+      return text;
+    }
+  } catch (err) {
+    console.error("[initiative-engine] Failed to generate dynamic nudge, falling back to static template:", err);
+  }
+
+  // Fallback to static template
+  return pickNudgeText(type, ctx.lastActionText);
+}
+
 /**
  * Builds the full ProactiveNudge object to return to the frontend.
  */
@@ -259,17 +355,19 @@ export async function buildProactiveNudge(
     return null;
   }
 
-  const { type, ctx } = result;
+  const { type, ctx, confidence } = result;
 
   if (type === "none") {
     return null;
   }
 
-  const text = pickNudgeText(type, ctx.lastActionText);
+  // Generate nudge text dynamically via Gemini
+  const text = await generateDynamicNudgeText(type, ctx);
 
   return {
     type,
     text,
+    interruptionConfidence: confidence,
     subtext:
       type === "return_after_absence" && ctx.hoursSinceLastSession > 96
         ? `بقالك ${Math.round(ctx.hoursSinceLastSession / 24)} أيام غايب`

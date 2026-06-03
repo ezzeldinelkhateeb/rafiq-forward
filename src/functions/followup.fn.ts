@@ -12,11 +12,15 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { selectFrom } from "@/integrations/supabase/typed-select";
 import { callGemini } from "@/lib/ai-client";
 import { AI_CONFIG } from "@/config/ai";
+import { logEvent } from "@/engine/events/event-logger";
 import {
-  PERSONA_VOICES,
   PHILOSOPHY_PROMPT_FRAGMENT,
   LENGTH_CONSTRAINTS,
 } from "@/engine/philosophy/core-beliefs";
+import { assembleMemory } from "@/engine/orchestrator/context-assembler";
+import { analyzeBehavioralState } from "@/engine/analyzer/state-machine";
+import { computeDynamicStance, buildStancePromptInstructions } from "@/engine/orchestrator/dynamic-stance";
+import { DEFAULT_SCORES } from "@/engine/events/event-types";
 import type { RafiqReply, Persona } from "@/types/companion";
 
 // ─── 1. Confirm action done + generate next-step motivation ───────────────
@@ -71,12 +75,26 @@ export const confirmAndContinue = createServerFn({ method: "POST" })
       })
       .then(() => {}, () => {});
 
-    const voice = PERSONA_VOICES[data.persona];
+    // 5. Assemble memory & analyze behavior state to compute dynamic stance
+    const memory = await assembleMemory({ userId: data.userId, currentMessage: "" });
+    const hourOfDay = new Date().getHours();
+    const recentActionDoneRate = memory.streakStats.total > 0 ? memory.streakStats.done / memory.streakStats.total : 0;
+    const behaviorAnalysis = analyzeBehavioralState({
+      userMessage: "",
+      hourOfDay,
+      hoursSinceLastSession: memory.hoursSinceLastSession,
+      recentActionDoneRate,
+      sessionCount: memory.streakStats.total,
+      recentEmotions: memory.recentEmotions,
+    });
+    const stance = computeDynamicStance(memory.behavioralScores || DEFAULT_SCORES, behaviorAnalysis.state, memory.recentEmotions);
 
     const systemInstruction = `
 ${PHILOSOPHY_PROMPT_FRAGMENT}
 
-أنت رفيق في صورة "${voice.name}": ${voice.description}
+أنت رفيق — رفيقك السلوكي وجدع بلدك الصاحب والناصح. كل ردودك بالعربي المصري الدارج الطبيعي (العامية المصرية) — مش فصحى، مش إنجليزي.
+تتكيف طريقة كلامك وتعاملك الآن بناءً على حالتك السلوكية والمؤشرات الحالية كما يلي:
+${buildStancePromptInstructions(stance)}
 
 اللي قدامك لسه نفّذ الخطوة العملية اللي اقترحتها عليه.
 مهمتك الآن:
@@ -139,6 +157,15 @@ OUTPUT: JSON فقط بدون markdown:
       .select("id")
       .single();
 
+    // Emit behavioral events (fire-and-forget)
+    void logEvent(data.userId, "action_done", {
+      interactionId: data.interactionId,
+      actionText: original?.action ?? "",
+    });
+    void logEvent(data.userId, "celebrate", {
+      interactionId: saved?.id,
+    });
+
     return {
       id: saved?.id ?? crypto.randomUUID(),
       mode: "celebrate",
@@ -168,12 +195,27 @@ export const regenerateAlternative = createServerFn({ method: "POST" })
       throw new Error("Interaction not found or access denied");
     }
 
-    const voice = PERSONA_VOICES[data.persona];
+    // Assemble memory & analyze behavior state to compute dynamic stance
+    const memory = await assembleMemory({ userId: data.userId, currentMessage: "" });
+    const hourOfDay = new Date().getHours();
+    const recentActionDoneRate = memory.streakStats.total > 0 ? memory.streakStats.done / memory.streakStats.total : 0;
+    const behaviorAnalysis = analyzeBehavioralState({
+      userMessage: "",
+      hourOfDay,
+      hoursSinceLastSession: memory.hoursSinceLastSession,
+      recentActionDoneRate,
+      sessionCount: memory.streakStats.total,
+      recentEmotions: memory.recentEmotions,
+    });
+    const stance = computeDynamicStance(memory.behavioralScores || DEFAULT_SCORES, behaviorAnalysis.state, memory.recentEmotions);
 
     const systemInstruction = `
 ${PHILOSOPHY_PROMPT_FRAGMENT}
 
-أنت رفيق في صورة "${voice.name}".
+أنت رفيق — رفيقك السلوكي وجدع بلدك الصاحب والناصح. كل ردودك بالعربي المصري الدارج الطبيعي (العامية المصرية) — مش فصحى، مش إنجليزي.
+تتكيف طريقة كلامك وتعاملك الآن بناءً على حالتك السلوكية والمؤشرات الحالية كما يلي:
+${buildStancePromptInstructions(stance)}
+
 الخطوة اللي اقترحتها قبل كده الشخص مش قادر يعملها دلوقتي.
 اقترح خطوة بديلة أسهل وأخف، حركة جسدية صغيرة جداً ممكن يعملها وهو قاعد مكانه.
 ممنوع تعيد نفس الخطوة. خليها مختلفة وأخف بشكل واضح.

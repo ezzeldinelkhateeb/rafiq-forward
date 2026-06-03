@@ -5,14 +5,17 @@
 
 import { useState, useEffect } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { getProactiveNudge } from "@/functions/proactive.fn";
+import { getProactiveNudge, logNudgeAccepted, logNudgeIgnored } from "@/functions/proactive.fn";
 import type { ProactiveNudge } from "@/types/companion";
 
 export function useProactive(userId: string, isReady: boolean): {
   nudge: ProactiveNudge | null;
   dismiss: () => void;
+  accept: (replyText?: string) => void;
 } {
   const callGetNudge = useServerFn(getProactiveNudge);
+  const callLogNudgeAccepted = useServerFn(logNudgeAccepted);
+  const callLogNudgeIgnored = useServerFn(logNudgeIgnored);
   const [nudge, setNudge] = useState<ProactiveNudge | null>(null);
 
   useEffect(() => {
@@ -24,7 +27,21 @@ export function useProactive(userId: string, isReady: boolean): {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, userId]);
 
-  const dismiss = () => setNudge(null);
+  const dismiss = () => {
+    if (nudge && userId) {
+      callLogNudgeIgnored({ data: { userId, nudgeType: nudge.type } }).catch(() => {});
+    }
+    setNudge(null);
+  };
 
-  return { nudge, dismiss };
+  const accept = (replyText?: string) => {
+    if (nudge && userId) {
+      callLogNudgeAccepted({
+        data: { userId, nudgeType: nudge.type, nudgeText: replyText ?? nudge.text },
+      }).catch(() => {});
+    }
+    setNudge(null);
+  };
+
+  return { nudge, dismiss, accept };
 }

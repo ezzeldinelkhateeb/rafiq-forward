@@ -3,130 +3,18 @@
  * Distills Persona, Mode-Specific rules, Memory, and Global Humanization rules.
  */
 
-import type { ResponseMode, Persona } from "@/types/companion";
 import type { AssembledMemory } from "@/types/memory";
+import type { BehavioralAnalysis } from "@/types/behavioral";
+import type { BehavioralScores } from "@/engine/events/event-types";
+import type { DynamicStance } from "./dynamic-stance";
+import type { DialogueAct } from "./conversation-director";
+import { buildStancePromptInstructions } from "./dynamic-stance";
+import { DIALOGUE_ACT_INSTRUCTIONS } from "./dialogue-act-schemas";
 import {
-  PERSONA_VOICES,
   PHILOSOPHY_PROMPT_FRAGMENT,
-  LENGTH_CONSTRAINTS,
 } from "@/engine/philosophy/core-beliefs";
-
-// ─── Mode-Specific Instructions (18 Modes) ────────────────────────────────
-
-const MODE_INSTRUCTIONS: Record<ResponseMode, string> = {
-  validate_reframe_act: `
-ردك في جزئين أساسيين + ثالث اختياري:
-١) validate: سطر واحد يحتوي مشاعره بدفء (${LENGTH_CONSTRAINTS.VALIDATE_MAX_WORDS} كلمات كحد أقصى).
-٢) reframe: سطر واحد يقلب زاوية الرؤية (${LENGTH_CONSTRAINTS.REFRAME_MAX_WORDS} كلمات كحد أقصى).
-٣) action (اختياري): زرار بفعل جسدي صغير حقيقي (${LENGTH_CONSTRAINTS.ACTION_MAX_WORDS} كلمات).
-    حطه فقط لو الشخص دلوقتي محتاج حركة فعلاً (مشتت/متوتر/مكسل).
-    لو محتاج بس يفضفض أو يسمع كلامك، خلي action = "" — احترم اللحظة.
-OUTPUT: JSON فقط: {"validate":"...","reframe":"...","action":"..."}
-`.trim(),
-
-  question_only: `
-ردك: سؤال واحد بس. مش نصيحة، مش تحليل — سؤال واحد يخليه يفكر أو يحس بحاجة.
-(${LENGTH_CONSTRAINTS.QUESTION_MAX_WORDS} كلمات كحد أقصى)
-OUTPUT JSON: {"validate":"السؤال هنا","reframe":"","action":""}
-`.trim(),
-
-  observation: `
-ردك: ملاحظة واحدة — حاجة لاحظتها في سلوكه أو طريقة كلامه الأخيرة. مش نقد، مش نصيحة.
-ابدأ بـ "لاحظت إنك..." أو "حاسس إن..."
-(${LENGTH_CONSTRAINTS.OBSERVATION_MAX_WORDS} كلمات كحد أقصى)
-OUTPUT JSON: {"validate":"الملاحظة هنا","reframe":"","action":""}
-`.trim(),
-
-  reconnect: `
-اللي قدامك رجع بعد غياب. أولويتك الأولى: الاستقبال والترحاب الدافئ، مش النصيحة.
-جملة واحدة دافية تعترف بالغياب ومبسوط بعودته بالعامية المصرية. بعدين سؤال واحد بس.
-مثال: "حمد الله على السلامة يا بطل فين أراضيك؟ 👀 — إيه اللي حصل؟"
-OUTPUT JSON: {"validate":"الترحاب + السؤال","reframe":"","action":""}
-`.trim(),
-
-  celebrate: `
-اللي قدامك لسه مخلص الأكشن بتاعه بنجاح (عمل الحاجة اللي طلبناها منه). احتفل معاه بجد وجدعنة، وخده بإيده لخطوة تانية:
-- إذا كان لسه جديد والذاكرة بتاعته ما فيهاش أهداف واضحة (حقل [من هو] فارغ أو لا توجد أهداف مسجلة فيه): احتفل معاه واسأله بلطف وحنية عن أهدافه الكبيرة أو رؤيته لنفسه عشان تقدر تبني بروفيل وذاكرة عنه وتفهمه أكتر.
-- إذا كان عنده أهداف متسجلة أصلاً (مذكورة في حقل [من هو]): احتفل بيه وزقه يركز في خطوة تانية أهم من أهدافه اللي مسجلها عشان ينجزها.
-جملة واحدة احتفال وتشجيع + خطوة قادمة وسؤال، وممكن زرار حركة (action) لخطوة قادمة حقيقية.
-OUTPUT JSON: {"validate":"الاحتفال والخطوة القادمة والسؤال","reframe":"","action":"نص الزرار الجديد (اختياري)"}
-`.trim(),
-
-  challenge: `
-اللي قدامك محتاج دفشة، مش احتواء. مش وقت التعاطف — وقت التحدي والحركة.
-جملة واحدة تحديه بمحبة وحسم. بعدين action واحد لازم يعمله دلوقتي.
-OUTPUT JSON: {"validate":"التحدي هنا","reframe":"","action":"فعل الحركة القاسي اللطيف"}
-`.trim(),
-
-  followup: `
-عنده خطوة اقترحتها المرة اللي فاتت ومش عملها. اسأله عنها بدون ضغط أو إشعار بالذنب بلطف وجدعنة.
-مثال: "اللي اتفقنا عليه المرة اللي فاتت — عملت فيه إيه؟ 😉"
-OUTPUT JSON: {"validate":"سؤال المتابعة اللطيف","reframe":"","action":""}
-`.trim(),
-
-  silence_breaking: `
-أنت اللي بتبدأ الكلام بعد غياب طويل جداً. جملة واحدة طبيعية تفتح الباب بدون ضغط ولا عتاب.
-مثال: "عاش من شافك.. كله تمام معاك؟"
-OUTPUT JSON: {"validate":"الجملة الافتتاحية","reframe":"","action":""}
-`.trim(),
-
-  playful_observation: `
-ردك: ملاحظة لطيفة، هزلية خفيفة الدم، بمصرية أصيلة تلطف الجو وتنكش المستخدم بلطف عن عادته السيئة دون أن تضايقه.
-مثال: "ملاحظ إن التليفون واكل دماغك تالت ومتلت اليومين دول 👀"
-OUTPUT JSON: {"validate":"الملاحظة الهزلية هنا","reframe":"","action":""}
-`.trim(),
-
-  deep_reflection: `
-ردك: سطرين من الاحتواء والعمق الفلسفي الهادئ. ساعده يربط زهقه أو مشكلته بمشاعر أعمق بنبرة حكيمة ودافئة.
-OUTPUT JSON: {"validate":"السطر الأول الفلسفي","reframe":"السطر الثاني الذي يلمس الوجدان والعمق السلوكي","action":""}
-`.trim(),
-
-  interruption_pattern: `
-ردك: مقاطعة حاسمة ومفاجئة بنبرة قوية (لكن ودودة) لكسر حالة التوهان أو الدومسكرول الذي يعيشه الآن. شبه حالته بشيء طريف أو صادم لتنبيهه.
-مثال: "خمس ساعات لف؟ أنت كدة بتغسل دماغك في الخلاط يا صديقي! اقفل دلوقتي حالاً."
-OUTPUT JSON: {"validate":"جملة المقاطعة الصادمة اللطيفة","reframe":"","action":"الأكشن السريع الفوري لإغلاق الشاشة"}
-`.trim(),
-
-  late_night_softness: `
-ردك: طمأنينة ليلية دافئة وهادئة جداً تتناسب مع تعب وسكون السهر بالليل. ابتعد تماماً عن النصائح القاسية أو الخطوات الصعبة. ساعده يرتاح أو ينام فقط.
-OUTPUT JSON: {"validate":"جملة الطبطبة الليلية الناعمة","reframe":"إعادة توجيه لطيفة للنوم أو الاسترخاء","action":"ضع الموبايل بعيداً ونم"}
-`.trim(),
-
-  momentum_push: `
-المستخدم في حالة زخم وحركة ممتازة. ردك: جملة تشجيعية قوية وحماسية جداً تدفعه للاستمرار في مساره والتركيز على الخطوة الكبرى التالية.
-مثال: "الفرمة ماشية تمام وكيرف الحركة عالي.. بلاش تقف دلوقتي وكمل!"
-OUTPUT JSON: {"validate":"جملة الحماس والدفع للأمام","reframe":"","action":"الأكشن القادم لزيادة الزخم"}
-`.trim(),
-
-  relapse_detection: `
-لاحظت إشارات تراجع في سلوكه (مثل العودة للسهر أو تجاهل الخطوات). ردك: ملاحظة دافئة وخالية تماماً من اللوم أو الذنب، تعترف بالتراجع كجزء طبيعي من الرحلة وتدعوه لخطوة صغيرة للعودة.
-OUTPUT JSON: {"validate":"الاعتراف الدافئ بالتراجع كخطوة طبيعية ومطمئنة","reframe":"إعادة الإطار","action":"أبسط خطوة للعودة للمسار"}
-`.trim(),
-
-  emotional_mirroring: `
-ردك: عكس كامل ودقيق لمشاعره الحالية لكي يشعر أنك تفهمه وتسمعه بصدق، كأنك مرآة لروحه دون تقديم أي نصيحة أو محاولة لحل المشكلة الآن.
-مثال: "حاسس بيك.. زهقان وتعبان ومش طايق حتى تفكر في اللي وراك."
-OUTPUT JSON: {"validate":"عكس مشاعره بدقة وتعاطف كامل","reframe":"","action":""}
-`.trim(),
-
-  micro_story: `
-ردك: قصة قصيرة جداً (سطر واحد) أو تشبيه/مثل بلدي مصري يوضح حالته السلوكية بطريقة طريفة وبليغة ليفهم أبعاد تصرفه.
-مثال: "ده زي اللي بيجري في الساقية ومغمي عينيه.. بيبذل مجهود بس في مكانه. تفتكر جه وقت نشيل الغمامة؟"
-OUTPUT JSON: {"validate":"التشبيه أو المثل المصري السريع","reframe":"المعنى خلفه لتغيير التفكير","action":""}
-`.trim(),
-
-  tough_love: `
-ردك: حب حازم (مواجهة صريحة ودافئة لكنها حاسمة ومباشرة جداً). واجهه بتهربه، كسله، أو تناقض أفعاله مع أهدافه دون قسوة وبطيبة بلدية.
-مثال: "بص.. أنت بتشتكي من التشتت بس حاطط الموبايل جنبك وأنت بتذاكر. إزاي طيب؟ 😉"
-OUTPUT JSON: {"validate":"المواجهة الصريحة الحازمة والودودة","reframe":"التصحيح السلوكي","action":"الأكشن الصعب الذي يتهرب منه"}
-`.trim(),
-
-  quiet_presence: `
-المستخدم مستنزف تماماً ومحتاج وجود ودعم صامت. ردك: جملة واحدة بسيطة جداً وطبطبة حانية بدون أي نصائح، إرشادات، أو خطوات عملية نهائياً.
-مثال: "أنا هنا جنبك.. خد وقتك ومتقلقش من أي حاجة."
-OUTPUT JSON: {"validate":"جملة الحضور الهادئ والدعم الصامت","reframe":"","action":""}
-`.trim(),
-};
+import { getBlockedOpenings } from "./conversation-rhythm";
+import { detectAISmell, buildSmellPromptInstructions } from "@/engine/quality/smell-detector";
 
 // ─── Global Humanization Rules ─────────────────────────────────────────────
 
@@ -142,10 +30,12 @@ const HUMANIZATION_RULES = `
 `.trim();
 
 export interface PromptBuildParams {
-  persona: Persona;
-  mode: ResponseMode;
+  stance: DynamicStance;
+  dialogueAct: DialogueAct;
   memory: AssembledMemory;
   userMessage: string;
+  behavioralAnalysis?: BehavioralAnalysis;
+  recentRafiqTexts?: string[];
 }
 
 export interface BuiltPrompt {
@@ -155,24 +45,41 @@ export interface BuiltPrompt {
 
 /**
  * Assembles the complete system prompt.
- * Order: Philosophy → Persona → Humanization → Memory Context → Mode Instructions
+ * Order: Philosophy → Stance Instructions → Humanization → Memory Context → Mode Instructions
  */
 export function buildPrompt(params: PromptBuildParams): BuiltPrompt {
-  const { persona, mode, memory, userMessage } = params;
-  const voice = PERSONA_VOICES[persona];
+  const { stance, dialogueAct, memory, userMessage } = params;
 
   const philosophySection = PHILOSOPHY_PROMPT_FRAGMENT;
 
-  const personaSection = `
-أنت رفيق في صورة "${voice.name}": ${voice.description}
-كل ردودك بالعربي المصري الدارج الطبيعي (العامية المصرية) — مش فصحى، مش إنجليزي.
-`.trim();
+  const userName = memory.userName;
+  const nameInstruction = userName
+    ? `اسم المستخدم الحقيقي هو "${userName}". ناديه باسمه بشكل طبيعي وعفوي في بعض الردود (مش في كل رد — لا تبالغ). مثال: "يا ${userName}"، "إيه رأيك يا ${userName}؟"، "عاش يا ${userName}!".`
+    : "";
 
-  const humanizationSection = HUMANIZATION_RULES;
+  const identitySection = [
+    `أنت رفيق — رفيقك السلوكي وجدع بلدك الصاحب والناصح. كل ردودك بالعربي المصري الدارج الطبيعي (العامية المصرية) — مش فصحى، مش إنجليزي.`,
+    nameInstruction,
+  ].filter(Boolean).join("\n");
+
+  const stanceSection = buildStancePromptInstructions(stance);
+
+  const humanizationSection = buildHumanizationSection(params.recentRafiqTexts);
+
+  const smellReport = detectAISmell(params.recentRafiqTexts || []);
+  const smellSection = buildSmellPromptInstructions(smellReport);
 
   const memorySection = buildMemorySection(memory);
 
-  const modeSection = MODE_INSTRUCTIONS[mode];
+  const behaviorSection = params.behavioralAnalysis
+    ? buildBehaviorSection(params.behavioralAnalysis)
+    : "";
+
+  const scoresSection = memory.behavioralScores
+    ? buildScoresSection(memory.behavioralScores)
+    : "";
+
+  const modeSection = DIALOGUE_ACT_INSTRUCTIONS[dialogueAct];
 
   const jsonRuleSection = `
 مهم جداً وحاسم:
@@ -186,11 +93,19 @@ export function buildPrompt(params: PromptBuildParams): BuiltPrompt {
   const systemInstruction = [
     philosophySection,
     "",
-    personaSection,
+    identitySection,
+    "",
+    stanceSection,
     "",
     humanizationSection,
     "",
+    smellSection,
+    "",
     memorySection,
+    "",
+    behaviorSection,
+    "",
+    scoresSection,
     "",
     modeSection,
     "",
@@ -200,6 +115,19 @@ export function buildPrompt(params: PromptBuildParams): BuiltPrompt {
     .join("\n");
 
   return { systemInstruction, userMessage };
+}
+
+function buildHumanizationSection(recentRafiqTexts?: string[]): string {
+  let rules = HUMANIZATION_RULES;
+
+  if (recentRafiqTexts && recentRafiqTexts.length > 0) {
+    const blocked = getBlockedOpenings(recentRafiqTexts);
+    if (blocked.length > 0) {
+      rules += `\n\u0668) \u0645\u0645\u0646\u0648\u0639 \u062a\u0645\u0627\u0645\u0627\u064b \u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u0627\u0644\u0627\u0641\u062a\u062a\u0627\u062d\u064a\u0627\u062a \u0627\u0644\u062a\u0627\u0644\u064a\u0629 \u0644\u0623\u0646\u0647\u0627 \u062a\u0643\u0631\u0631\u062a \u0643\u062a\u064a\u0631\u0627\u064b: ${blocked.join("\u060c ")}. \u0627\u0628\u062a\u0643\u0631 \u0627\u0641\u062a\u062a\u0627\u062d\u064a\u0629 \u0645\u062e\u062a\u0644\u0641\u0629 \u062a\u0645\u0627\u0645\u0627\u064b.`;
+    }
+  }
+
+  return rules;
 }
 
 // ─── Memory Section Builder ───────────────────────────────────────────────
@@ -225,6 +153,11 @@ function buildMemorySection(memory: AssembledMemory): string {
   // Detected patterns
   if (memory.patternsNarrative) {
     parts.push(`[أنماطه السلوكية الملاحظة]: ${memory.patternsNarrative}`);
+  }
+
+  // Open loops context
+  if (memory.openLoops && memory.openLoops.length > 0) {
+    parts.push(`[حلقات سلوكية مفتوحة ومعلقة للمستخدم]:\n${memory.openLoops.map(ol => `- ${ol}`).join("\n")}`);
   }
 
   // Unfinished action
@@ -256,6 +189,23 @@ function buildMemorySection(memory: AssembledMemory): string {
     parts.push(`[مكافآته المفضلة]: ${memory.smallPleasures.join("، ")}`);
   }
 
+  // ── Identity Pulse — who they're becoming ─────────────────────────────
+  if (memory.identityLevel && memory.identityLevel >= 1) {
+    const goalHint = memory.identityNarrative
+      ? memory.identityNarrative.split(".")[0]
+      : "أهدافه";
+
+    const pulseInstruction = {
+      1: `المستخدم ده بدأ فعلاً يتحرك — مش بس بيتكلم. في اللحظات المناسبة (مش كل رد)، عكسله هويته الجديدة بشكل عفوي: "ده مش حد بيحاول — ده حد بيعمل فعلاً". يكون طبيعي ومش مقصود.`,
+      2: `المستخدم ده راسخ في تحركه — ${goalHint}. هويته السلوكية بدأت تتشكل. في اللحظة الصح، قوله بثقة: "إنت مش زي زمان". مش مديح — حقيقة.`,
+      3: `المستخدم ده في طور التحول الحقيقي. ناديه بهويته الجديدة بشكل طبيعي تماماً — مش كأنك بتلاحظ، كأنك بتتكلم مع الشخص اللي أصبح هو فعلاً.`,
+    }[memory.identityLevel];
+
+    if (pulseInstruction) {
+      parts.push(`[نبضة الهوية — استخدمها باعتدال]: ${pulseInstruction}`);
+    }
+  }
+
   if (parts.length === 0) {
     return "";
   }
@@ -264,5 +214,73 @@ function buildMemorySection(memory: AssembledMemory): string {
     "── سياق (للذاكرة الداخلية فقط، لا تعيد ذكره صراحةً إلا لو لازم) ──",
     ...parts,
     "──────────────────────────────────────────────────────────────────",
+  ].join("\n");
+}
+
+// ─── Behavioral State Section Builder ─────────────────────────────────────
+
+const STATE_LABELS_AR: Record<string, string> = {
+  digital_escape: "هروب رقمي / دوامسكرول",
+  productive_momentum: "زخم وإنتاجية",
+  emotional_collapse: "ضائقة عاطفية",
+  rebuilding: "نهوض وعودة",
+  stuck: "شلل وحيرة",
+  present: "حاضر وواعي",
+  unknown: "غير واضح",
+};
+
+function buildBehaviorSection(analysis: BehavioralAnalysis): string {
+  const label = STATE_LABELS_AR[analysis.state] || analysis.state;
+  const confidence = Math.round(analysis.confidence * 100);
+
+  const parts: string[] = [];
+  parts.push(`الحالة المكتشفة: ${label} (ثقة ${confidence}%)`);
+
+  if (analysis.signals.length > 0) {
+    parts.push(`الإشارات: ${analysis.signals.slice(0, 3).join("، ")}`);
+  }
+
+  if (analysis.isLateNight) {
+    parts.push("وقت متأخر من الليل — خلي الرد هادي ودافي");
+  }
+
+  if (analysis.isFirstMessageOfDay) {
+    parts.push("أول رسالة اليوم — ابدأ بدفء إضافي");
+  }
+
+  return [
+    "[الحالة السلوكية المكتشفة]",
+    ...parts,
+  ].join("\n");
+}
+
+// ─── Behavioral Scores Section Builder ───────────────────────────────────
+
+function buildScoresSection(scores: BehavioralScores): string {
+  const parts: string[] = [];
+
+  if (scores.momentumScore > 0.3) {
+    parts.push(`زخم الحركة: ${Math.round(scores.momentumScore * 100)}% — ${scores.momentumScore > 0.7 ? "ممتاز، يتحرك بانتظام" : "يحتاج دفعة"}`);
+  }
+
+  if (scores.relapseProbability > 0.4) {
+    parts.push(`احتمال الانتكاسة: ${Math.round(scores.relapseProbability * 100)}% — راقب بلطف`);
+  }
+
+  if (scores.sleepDebtScore > 0.3) {
+    parts.push(`دين النوم: ${Math.round(scores.sleepDebtScore * 100)}% — يعاني من السهر`);
+  }
+
+  if (scores.trustScore > 0.5) {
+    parts.push(`ثقة الخطوات: ${Math.round(scores.trustScore * 100)}% — ينفذ الخطوات بانتظام`);
+  } else if (scores.trustScore > 0 && scores.trustScore <= 0.3) {
+    parts.push(`ثقة الخطوات: ${Math.round(scores.trustScore * 100)}% — يتجنب الخطوات، خليها أسهل`);
+  }
+
+  if (parts.length === 0) return "";
+
+  return [
+    "[المؤشارات السلوكية]",
+    ...parts,
   ].join("\n");
 }

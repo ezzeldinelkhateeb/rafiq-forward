@@ -10,6 +10,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { AssembledMemory, EmotionalState } from "@/types/memory";
 import { buildRelationshipContinuity } from "@/engine/memory/relationship-memory";
 import { buildInitiativeObservation } from "@/engine/memory/initiative-memory";
+import { consumeEvents } from "@/engine/events/event-logger";
+import { computeBehavioralScores } from "@/engine/events/event-scores";
 
 // ─── Main Assembler ────────────────────────────────────────────────────────
 
@@ -19,19 +21,25 @@ export async function assembleMemory(params: {
 }): Promise<AssembledMemory> {
   const { userId, currentMessage } = params;
 
-  // Parallel DB queries — all 5 layers
+  // Parallel DB queries — all 5 layers + events + open loops + user name
   const [
     identityResult,
     recentInteractions,
     relationshipSnapshot,
     emotionalHistory,
     streakResult,
+    eventsResult,
+    openLoopsResult,
+    userNameResult,
   ] = await Promise.allSettled([
     fetchIdentityMemory(userId),
     fetchRecentInteractions(userId),
     fetchLatestSnapshot(userId, "relationship"),
     fetchRecentEmotionalTimeline(userId),
     fetchStreakStats(userId),
+    consumeEvents(userId, { limit: 50 }),
+    fetchOpenLoops(userId),
+    fetchUserName(userId),
   ]);
 
   // Extract values safely
@@ -49,6 +57,15 @@ export async function assembleMemory(params: {
     streakResult.status === "fulfilled"
       ? streakResult.value
       : { done: 0, total: 0 };
+
+  const events =
+    eventsResult.status === "fulfilled" ? eventsResult.value : [];
+
+  const openLoops =
+    openLoopsResult.status === "fulfilled" ? openLoopsResult.value : [];
+
+  const userName =
+    userNameResult.status === "fulfilled" ? userNameResult.value : null;
 
   // ── Layer 1: Identity narrative ────────────────────────────────────────
   const identityNarrative = buildIdentityNarrative(identity);
@@ -88,6 +105,15 @@ export async function assembleMemory(params: {
       .filter(Boolean),
     sleepTarget: identity?.sleep_target || null,
     smallPleasures: identity?.small_pleasures || [],
+    recentRafiqTexts: interactions
+      .map((i) => i.validate)
+      .filter(Boolean) as string[],
+    behavioralScores: computeBehavioralScores(events, {
+      interactionStats: { done: streak.done, total: streak.total },
+    }),
+    openLoops,
+    userName,
+    identityLevel: computeIdentityLevel(streak.done),
   };
 }
 
@@ -100,6 +126,15 @@ async function fetchIdentityMemory(userId: string) {
     .eq("user_id", userId)
     .single();
   return data;
+}
+
+async function fetchUserName(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("users")
+    .select("display_name")
+    .eq("id", userId)
+    .single();
+  return data?.display_name ?? null;
 }
 
 async function fetchRecentInteractions(userId: string) {
@@ -272,4 +307,45 @@ function detectCurrentEmotion(
     return "rebuilding";
 
   return "unknown";
+}
+
+async function fetchOpenLoops(userId: string): Promise<string[]> {
+  const { data } = await (supabaseAdmin
+    .from("open_loops" as any)
+    .select("loop_type, content, expected_by")
+    .eq("user_id", userId)
+    .eq("status", "open")
+    .order("created_at", { ascending: false })
+    .limit(5) as any);
+
+  if (!data) return [];
+  return (data as any[]).map((l: any) => {
+    const typeLabel =
+      l.loop_type === "promise"
+        ? "وعد"
+        : l.loop_type === "postponement"
+          ? "تأجيل"
+          : l.loop_type === "excuse"
+            ? "عذر"
+            : l.loop_type === "avoidance"
+              ? "تجنب"
+              : l.loop_type === "win"
+                ? "إنجاز"
+                : "انتكاسة";
+    const expected = l.expected_by ? ` (متوقع بحلول ${new Date(l.expected_by).toLocaleDateString("ar-EG")})` : "";
+    return `[${typeLabel}]: ${l.content}${expected}`;
+  });
+}
+
+// ─── Identity Level Computation ────────────────────────────────────────────
+
+/**
+ * Converts total completed actions into an identity evolution level.
+ * Levels represent qualitative shifts in who the user is becoming.
+ */
+function computeIdentityLevel(done: number): 0 | 1 | 2 | 3 {
+  if (done >= 20) return 3; // transformed — هوية راسخة
+  if (done >= 10) return 2; // established — هوية في طور التكوين
+  if (done >= 3)  return 1; // emerging — بداية الهوية الجديدة
+  return 0;                 // no signal yet
 }

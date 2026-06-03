@@ -4,13 +4,14 @@
 
 import { createServerFn } from "@tanstack/react-start";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { logEvent } from "@/engine/events/event-logger";
 import type { StreakStats } from "@/types/companion";
 
 // ─── Confirm Action Done ────────────────────────────────────────────────────
 
 export const confirmActionDone = createServerFn({ method: "POST" })
   .inputValidator(
-    (input: { interactionId: string; userId: string }) => input
+    (input: { interactionId: string; userId: string; actionText?: string }) => input
   )
   .handler(async ({ data }) => {
     const { error } = await supabaseAdmin
@@ -23,8 +24,40 @@ export const confirmActionDone = createServerFn({ method: "POST" })
       .eq("user_id", data.userId);
 
     if (error) throw new Error(error.message);
+
+    // Emit action_accepted event (the new canonical event name)
+    void logEvent(data.userId, "action_accepted", {
+      interactionId: data.interactionId,
+      actionText: data.actionText ?? "",
+    });
+
+    // Also emit legacy action_done for backward compat with old score logic
+    void logEvent(data.userId, "action_done", {
+      interactionId: data.interactionId,
+    });
+
     return { ok: true };
   });
+
+// ─── Skip Action ─────────────────────────────────────────────────────────────
+
+/**
+ * Called when user taps "مش قادر · هاتلي حل تاني".
+ * Logs action_skipped event which increases relapse probability.
+ */
+export const skipAction = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: { interactionId: string; userId: string; actionText?: string }) => input
+  )
+  .handler(async ({ data }) => {
+    void logEvent(data.userId, "action_skipped", {
+      interactionId: data.interactionId,
+      actionText: data.actionText ?? "",
+    });
+    return { ok: true };
+  });
+
+
 
 // ─── Get Streak Stats ───────────────────────────────────────────────────────
 

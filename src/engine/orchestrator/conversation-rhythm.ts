@@ -1,5 +1,46 @@
 import type { ResponseMode } from "@/types/companion";
 
+// ─── Anti-AI-Smell: Overused Openings Blocklist ─────────────────────────────
+
+const OVERUSED_OPENINGS = [
+  "يا صاحبي",
+  "يا بطل",
+  "يا حبيبي",
+  "بص يا سيدي",
+  "بص بقى",
+  "إزيك",
+  "أهلا بيك",
+  "طب إسمع",
+  "شوف يا سيدي",
+  "يا أخويا",
+  "بص كده",
+  "طب تعال",
+  "أنا فاهمك",
+  "حاسس بيك",
+  "عاش يا بطل",
+  "ربنا يكرمك",
+  "ما شاء الله",
+  "بالظبط كده",
+  "من آخرها",
+];
+
+/**
+ * Returns a list of opening phrases that should be blocked based on recent
+ * Rafiq responses. Used by the prompt builder to inject anti-repetition rules.
+ */
+export function getBlockedOpenings(recentRafiqTexts: string[]): string[] {
+  const blocked: string[] = [];
+  for (const opening of OVERUSED_OPENINGS) {
+    const usageCount = recentRafiqTexts.filter((t) =>
+      t.toLowerCase().startsWith(opening) || t.includes(opening)
+    ).length;
+    if (usageCount >= 2) {
+      blocked.push(opening);
+    }
+  }
+  return blocked;
+}
+
 // Pacing categorizations
 const LONG_TEXT_MODES: ResponseMode[] = [
   "validate_reframe_act",

@@ -2,6 +2,8 @@
  * Memory types — the 5-layer memory architecture.
  */
 
+import type { BehavioralScores } from "@/engine/events/event-types";
+
 // ─── Layer 1: Identity Memory ─────────────────────────────────────────────
 
 export interface IdentityMemory {
@@ -105,4 +107,20 @@ export interface AssembledMemory {
   sleepTarget?: string | null;
   /** List of favorite rewards */
   smallPleasures?: string[];
+  /** Recent Rafiq response texts for anti-AI-smell detection */
+  recentRafiqTexts?: string[];
+  /** Behavioral scores computed from events (Phase 2) */
+  behavioralScores?: BehavioralScores;
+  /** Open loops / promises / avoidances currently pending */
+  openLoops?: string[];
+  /** User's real name from onboarding — used to address them personally */
+  userName?: string | null;
+  /**
+   * Identity evolution level — computed from total completed actions:
+   * 0 = no signal yet (< 3 done)
+   * 1 = emerging identity (3–9 done)
+   * 2 = established identity (10–19 done)
+   * 3 = transformed identity (20+ done)
+   */
+  identityLevel?: 0 | 1 | 2 | 3;
 }

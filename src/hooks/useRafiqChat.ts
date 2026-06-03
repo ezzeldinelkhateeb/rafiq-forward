@@ -15,6 +15,8 @@ import {
   confirmAndContinue,
   regenerateAlternative,
 } from "@/functions/followup.fn";
+import { loadChatHistory } from "@/functions/chat.fn";
+import { skipAction } from "@/functions/action.fn";
 import type { RafiqReply, Persona } from "@/types/companion";
 
 export interface ChatMessage {
@@ -33,6 +35,7 @@ export interface RafiqChatState {
   messages: ChatMessage[];
   thinking: boolean;
   error: string | null;
+  historyLoaded: boolean;
   send: (text: string, userId: string, sessionId: string, persona: Persona) => Promise<void>;
   confirmAction: (
     msgId: string,
@@ -41,16 +44,20 @@ export interface RafiqChatState {
     persona: Persona
   ) => Promise<void>;
   swapAlternative: (msgId: string, userId: string, persona: Persona) => Promise<void>;
+  loadHistory: (userId: string) => Promise<void>;
   clearError: () => void;
 }
 
 export function useRafiqChat(): RafiqChatState {
   const callConfirm = useServerFn(confirmAndContinue);
   const callAlternative = useServerFn(regenerateAlternative);
+  const callLoadHistory = useServerFn(loadChatHistory);
+  const callSkipAction = useServerFn(skipAction);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   const consecutiveAdviceCountRef = useRef(0);
 
@@ -211,11 +218,17 @@ export function useRafiqChat(): RafiqChatState {
 
   const swapAlternative = useCallback(
     async (msgId: string, userId: string, persona: Persona) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msgId ? { ...m, alternativeTried: true } : m))
-      );
+      let actionText = "";
+      setMessages((prev) => {
+        const msg = prev.find((m) => m.id === msgId);
+        if (msg) actionText = msg.action || "";
+        return prev.map((m) => (m.id === msgId ? { ...m, alternativeTried: true } : m));
+      });
       setThinking(true);
       try {
+        // Fire-and-forget logging of action skip event
+        callSkipAction({ data: { interactionId: msgId, userId, actionText } }).catch(() => {});
+
         const { action } = await callAlternative({
           data: { interactionId: msgId, userId, persona },
         });
@@ -228,18 +241,61 @@ export function useRafiqChat(): RafiqChatState {
         setThinking(false);
       }
     },
-    [callAlternative]
+    [callAlternative, callSkipAction]
   );
 
   const clearError = useCallback(() => setError(null), []);
+
+  const loadHistory = useCallback(
+    async (userId: string) => {
+      if (!userId || historyLoaded) return;
+      try {
+        const items = await callLoadHistory({ data: { userId, limit: 10 } });
+        if (items.length === 0) {
+          setHistoryLoaded(true);
+          return;
+        }
+
+        const historyMessages: ChatMessage[] = [];
+        for (const item of items) {
+          // Add user message
+          historyMessages.push({
+            id: `hist-user-${item.id}`,
+            role: "user",
+            text: item.user_text,
+          });
+          // Add Rafiq reply
+          historyMessages.push({
+            id: item.id,
+            role: "rafiq",
+            text: item.validate,
+            reframe: item.reframe || undefined,
+            action: item.action || undefined,
+            actionDone: item.action_done,
+            mode: item.response_mode,
+            emotionalTag: item.emotional_tag || undefined,
+          });
+        }
+
+        setMessages(historyMessages);
+        setHistoryLoaded(true);
+      } catch (e) {
+        console.error("[useRafiqChat] Failed to load history:", e);
+        setHistoryLoaded(true);
+      }
+    },
+    [callLoadHistory, historyLoaded]
+  );
 
   return {
     messages,
     thinking,
     error,
+    historyLoaded,
     send,
     confirmAction,
     swapAlternative,
+    loadHistory,
     clearError,
   };
 }
