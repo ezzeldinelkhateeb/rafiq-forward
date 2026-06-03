@@ -63,6 +63,7 @@ async function runEvaluation() {
         state: scenario.state,
         confidence: 1.0,
         signals: [],
+        hourOfDay: 12,
         isLateNight: false,
         isFirstMessageOfDay: false,
       },
@@ -136,7 +137,7 @@ async function runEvaluation() {
   console.log(`Overall Average Score: ${overallAvg.toFixed(2)} / 5.0\n`);
 
   // Write evaluation report markdown file to artifacts
-  const artifactDir = "C:\\Users\\c2d\\.gemini\\antigravity\\brain\\3b0d41a7-b380-4947-88b9-dd5beaa466cc";
+  const artifactDir = process.env.EVAL_ARTIFACT_DIR || "/mnt/documents";
   const reportPath = path.join(artifactDir, "eval_results.md");
 
   let markdown = `# Rafiq Behavioral OS — Evaluation Results\n\n`;

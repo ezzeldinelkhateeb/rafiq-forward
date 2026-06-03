@@ -79,6 +79,26 @@ export const addManualNode = createServerFn({ method: "POST" })
     return node as BrainNode;
   });
 
+// ─── Add Node Link ──────────────────────────────────────────────────────────
+
+export const addNodeLink = createServerFn({ method: "POST" })
+  .inputValidator(
+    (input: {
+      fromNode: string;
+      toNode: string;
+      relationType: "causes" | "helps" | "blocks" | "subtask";
+    }) => input
+  )
+  .handler(async ({ data }) => {
+    const { error } = await supabaseAdmin.from("node_links").insert({
+      from_node: data.fromNode,
+      to_node: data.toNode,
+      relation_type: data.relationType,
+    });
+    if (error) throw new Error(error.message);
+    return { success: true };
+  });
+
 // ─── Delete Brain Node ─────────────────────────────────────────────────────
 
 export const deleteBrainNode = createServerFn({ method: "POST" })

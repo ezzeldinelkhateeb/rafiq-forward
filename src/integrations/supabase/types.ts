@@ -50,6 +50,51 @@ export type Database = {
         }
         Relationships: []
       }
+      brain_nodes: {
+        Row: {
+          created_at: string
+          id: string
+          parent_id: string | null
+          status: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          status?: string
+          title: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          parent_id?: string | null
+          status?: string
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brain_nodes_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "brain_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brain_nodes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       emotional_timeline: {
         Row: {
           created_at: string
@@ -79,6 +124,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      events: {
+        Row: {
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       focus_sessions: {
         Row: {
@@ -294,6 +371,182 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      node_links: {
+        Row: {
+          from_node: string
+          relation_type: string
+          to_node: string
+        }
+        Insert: {
+          from_node: string
+          relation_type: string
+          to_node: string
+        }
+        Update: {
+          from_node?: string
+          relation_type?: string
+          to_node?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "node_links_from_node_fkey"
+            columns: ["from_node"]
+            isOneToOne: false
+            referencedRelation: "brain_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "node_links_to_node_fkey"
+            columns: ["to_node"]
+            isOneToOne: false
+            referencedRelation: "brain_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      open_loops: {
+        Row: {
+          closed_at: string | null
+          content: string
+          created_at: string
+          expected_by: string | null
+          extracted_from: string | null
+          id: string
+          loop_type: string
+          opened_at: string
+          recurrence_count: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          content: string
+          created_at?: string
+          expected_by?: string | null
+          extracted_from?: string | null
+          id?: string
+          loop_type: string
+          opened_at?: string
+          recurrence_count?: number
+          status?: string
+          user_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          content?: string
+          created_at?: string
+          expected_by?: string | null
+          extracted_from?: string | null
+          id?: string
+          loop_type?: string
+          opened_at?: string
+          recurrence_count?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "open_loops_extracted_from_fkey"
+            columns: ["extracted_from"]
+            isOneToOne: false
+            referencedRelation: "interactions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "open_loops_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_steps: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          due_at: string | null
+          id: string
+          order_index: number
+          plan_id: string
+          status: string
+          title: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          order_index: number
+          plan_id: string
+          status?: string
+          title: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          due_at?: string | null
+          id?: string
+          order_index?: number
+          plan_id?: string
+          status?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_steps_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          brain_node_id: string | null
+          created_at: string
+          id: string
+          status: string
+          target_date: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          brain_node_id?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          target_date?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          brain_node_id?: string | null
+          created_at?: string
+          id?: string
+          status?: string
+          target_date?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plans_brain_node_id_fkey"
+            columns: ["brain_node_id"]
+            isOneToOne: false
+            referencedRelation: "brain_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plans_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sessions: {
         Row: {

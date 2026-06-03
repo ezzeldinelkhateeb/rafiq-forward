@@ -5,6 +5,7 @@ import {
   addManualNode,
   deleteBrainNode,
   updateNodeStatus,
+  addNodeLink,
   type BrainNode,
   type NodeLink,
 } from "@/functions/brain-map.fn";
@@ -55,6 +56,7 @@ export function BrainMap({ userId, onSwitchTab }: BrainMapProps) {
   const callAddNode = useServerFn(addManualNode);
   const callDeleteNode = useServerFn(deleteBrainNode);
   const callUpdateStatus = useServerFn(updateNodeStatus);
+  const callAddLink = useServerFn(addNodeLink);
   const callGeneratePlan = useServerFn(generatePlanFromGoal);
 
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -221,7 +223,9 @@ export function BrainMap({ userId, onSwitchTab }: BrainMapProps) {
           relation_type: relation,
         };
         // Persist link manually
-        await supabaseAdmin.from("node_links").insert(newLink);
+        await callAddLink({
+          data: { fromNode: newNode.id, toNode: newParentId, relationType: relation },
+        });
         setLinks((prev) => [...prev, newLink]);
       }
 

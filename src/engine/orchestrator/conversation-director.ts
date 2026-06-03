@@ -107,7 +107,8 @@ export function directConversation(params: {
   }
 
   // Allow action overrides
-  if (dialogueAct === "silence" || dialogueAct === "soft_presence" || dialogueAct === "mirror" || dialogueAct === "question") {
+  const act = dialogueAct as DialogueAct;
+  if (act === "silence" || act === "soft_presence" || act === "mirror" || act === "question") {
     allowAction = false;
   }
 
@@ -115,12 +116,12 @@ export function directConversation(params: {
   const warmth = stance.warmth;
   const pressure = stance.pressure;
 
-  if (dialogueAct === "interrupt") {
+  if (act === "interrupt") {
     maxWords = 12;
-  } else if (dialogueAct === "silence") {
+  } else if (act === "silence") {
     maxWords = 3;
     endingType = "silence";
-  } else if (dialogueAct === "question") {
+  } else if (act === "question") {
     endingType = "question";
   }
 
