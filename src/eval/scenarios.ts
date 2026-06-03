@@ -1,11 +1,11 @@
 import type { AssembledMemory } from "@/types/memory";
-import type { CompanionState } from "@/types/companion";
+import type { UserBehaviorState } from "@/types/behavioral";
 
 export interface EvalScenario {
   id: string;
   name: string;
   userMessage: string;
-  state: CompanionState; // Behavioral state
+  state: UserBehaviorState; // Behavioral state
   memory: AssembledMemory;
 }
 
@@ -55,7 +55,7 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
       hoursSinceLastSession: 8,
       lastAction: { text: "كتابة أول كود HTML بنفسه", done: true, daysAgo: 0 },
       streakStats: { done: 8, total: 10 },
-      recentEmotions: ["motivated", "focused", "satisfied"],
+      recentEmotions: ["motivated", "present", "motivated"],
       recentModes: ["celebrate", "validate_reframe_act"],
       sleepTarget: "10:30 PM",
       smallPleasures: ["قهوة مضبوطة", "أغنية بيحبها"],
@@ -144,11 +144,11 @@ export const EVAL_SCENARIOS: EvalScenario[] = [
       recentHistoryNarrative: "اقترحت عليه يقفل الإشعارات لمدة ساعة عشان يركز، ووافق.",
       relationshipNarrative: "بينفذ الخطوات بشكل كويس وبيحب المتابعة السريعة.",
       patternsNarrative: "بيتحفز بكلمات التشجيع البسيطة بعد الإنجاز.",
-      currentEmotionalSignal: "satisfied",
+      currentEmotionalSignal: "motivated",
       hoursSinceLastSession: 1,
       lastAction: { text: "قفل إشعارات الموبايل ساعة", done: true, daysAgo: 0 },
       streakStats: { done: 12, total: 15 },
-      recentEmotions: ["focused", "satisfied"],
+      recentEmotions: ["present", "motivated"],
       recentModes: ["validate_reframe_act"],
       sleepTarget: "11:00 PM",
       smallPleasures: ["شوكولاتة دارك", "مكالمة صديق"],

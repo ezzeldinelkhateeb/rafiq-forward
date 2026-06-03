@@ -63,6 +63,7 @@ async function runEvaluation() {
         state: scenario.state,
         confidence: 1.0,
         signals: [],
+        hourOfDay: 12,
         isLateNight: false,
         isFirstMessageOfDay: false,
       },
