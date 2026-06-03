@@ -5,6 +5,7 @@ import {
   addManualNode,
   deleteBrainNode,
   updateNodeStatus,
+  addNodeLink,
   type BrainNode,
   type NodeLink,
 } from "@/functions/brain-map.fn";
